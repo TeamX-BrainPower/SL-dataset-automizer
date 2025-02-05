@@ -5,6 +5,10 @@ from mediapipe import solutions
 import numpy as np
 import threading
 from mediapipe.framework.formats import landmark_pb2
+import time
+
+# Global variables for FPS calculation
+prev_time = 0
 
 # Global variables for sharing annotated frames between threads
 latest_annotated_frame = None
@@ -97,6 +101,15 @@ with vision.HandLandmarker.create_from_options(options) as landmarker:
         # Display the latest annotated frame
         with frame_lock:
             display_frame = latest_annotated_frame if latest_annotated_frame is not None else frame
+
+        # Calculate FPS
+        curr_time = time.time()
+        fps = 1 / (curr_time - prev_time)
+        prev_time = curr_time
+
+        # Display FPS on image
+        cv2.putText(display_frame, f'FPS: {int(fps)}', (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
         
         cv2.imshow('Hand Landmarker', display_frame)
 
