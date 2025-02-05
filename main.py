@@ -10,9 +10,12 @@ import time
 # Global variables for FPS calculation
 prev_time = 0
 
-# Global variables for sharing annotated frames between threads
-latest_annotated_frame = None
-frame_lock = threading.Lock()
+# Shared data structures and locks
+results_lock = threading.Lock()
+original_frames = {}  # Stores original RGB frames by timestamp
+face_results = {}     # Stores face landmarks by timestamp
+hand_results = {}     # Stores hand landmarks and handedness by timestamp
+latest_annotated_frame = None  # The combined frame to display
 
 # Visualization parameters
 MARGIN = 10  # pixels
@@ -20,52 +23,87 @@ FONT_SIZE = 1
 FONT_THICKNESS = 1
 HANDEDNESS_TEXT_COLOR = (88, 205, 54)  # vibrant green
 
-def draw_landmarks_on_image(result: vision.HandLandmarkerResult, image: mp.Image, timestamp_ms: int):
-    global latest_annotated_frame
+def draw_face_landmarks_on_image(annotated_image, face_landmarks_list):
+    for face_landmarks in face_landmarks_list:
+        face_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
+        face_landmarks_proto.landmark.extend([
+            landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) for landmark in face_landmarks
+        ])
+        solutions.drawing_utils.draw_landmarks(
+            image=annotated_image,
+            landmark_list=face_landmarks_proto,
+            connections=mp.solutions.face_mesh.FACEMESH_TESSELATION,
+            landmark_drawing_spec=None,
+            connection_drawing_spec=mp.solutions.drawing_styles.get_default_face_mesh_tesselation_style())
+        solutions.drawing_utils.draw_landmarks(
+            image=annotated_image,
+            landmark_list=face_landmarks_proto,
+            connections=mp.solutions.face_mesh.FACEMESH_CONTOURS,
+            landmark_drawing_spec=None,
+            connection_drawing_spec=mp.solutions.drawing_styles.get_default_face_mesh_contours_style())
+        solutions.drawing_utils.draw_landmarks(
+            image=annotated_image,
+            landmark_list=face_landmarks_proto,
+            connections=mp.solutions.face_mesh.FACEMESH_IRISES,
+            landmark_drawing_spec=None,
+            connection_drawing_spec=mp.solutions.drawing_styles.get_default_face_mesh_iris_connections_style())
+
+def draw_hand_landmarks_on_image(annotated_image, hand_landmarks_list, handedness_list):
+    for idx in range(len(hand_landmarks_list)):
+        hand_landmarks = hand_landmarks_list[idx]
+        handedness = handedness_list[idx] if idx < len(handedness_list) else []
+
+        hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
+        hand_landmarks_proto.landmark.extend([
+            landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) for landmark in hand_landmarks
+        ])
+        solutions.drawing_utils.draw_landmarks(
+            annotated_image,
+            hand_landmarks_proto,
+            solutions.hands.HAND_CONNECTIONS,
+            solutions.drawing_styles.get_default_hand_landmarks_style(),
+            solutions.drawing_styles.get_default_hand_connections_style())
+
+        if handedness:
+            handedness_text = handedness[0].category_name
+            height, width, _ = annotated_image.shape
+            x_coords = [landmark.x for landmark in hand_landmarks]
+            y_coords = [landmark.y for landmark in hand_landmarks]
+            text_x = int(min(x_coords) * width)
+            text_y = int(min(y_coords) * height) - MARGIN
+            cv2.putText(annotated_image, f"{handedness_text}",
+                       (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
+                       FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
+
+def process_and_combine_landmarks(timestamp_ms):
+    global latest_annotated_frame, original_frames, face_results, hand_results
+    original_rgb = original_frames.pop(timestamp_ms, None)
+    if original_rgb is None:
+        return
+
+    annotated_image = cv2.cvtColor(original_rgb, cv2.COLOR_RGB2BGR)
+    face_landmarks_list = face_results.pop(timestamp_ms, [])
+    hand_data = hand_results.pop(timestamp_ms, ([], []))
+    hand_landmarks_list, handedness_list = hand_data
+
+    draw_face_landmarks_on_image(annotated_image, face_landmarks_list)
+    draw_hand_landmarks_on_image(annotated_image, hand_landmarks_list, handedness_list)
     
-    try:
-        # Convert MediaPipe Image to numpy array (RGB format)
-        annotated_image = image.numpy_view().copy()
-        hand_landmarks_list = result.hand_landmarks or []
-        handedness_list = result.handedness or []
+    latest_annotated_frame = annotated_image.copy()
 
-        # Loop through detected hands
-        for idx in range(len(hand_landmarks_list)):
-            hand_landmarks = hand_landmarks_list[idx]
-            handedness = handedness_list[idx]
+def face_landmark_callback(result: vision.FaceLandmarkerResult, image: mp.Image, timestamp_ms: int):
+    global face_results
+    with results_lock:
+        face_results[timestamp_ms] = result.face_landmarks or []
+        if timestamp_ms in hand_results:
+            process_and_combine_landmarks(timestamp_ms)
 
-            # Draw hand landmarks
-            hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
-            hand_landmarks_proto.landmark.extend([
-              landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) for landmark in hand_landmarks
-            ])
-            
-            solutions.drawing_utils.draw_landmarks(
-                annotated_image,
-                hand_landmarks_proto,
-                solutions.hands.HAND_CONNECTIONS,
-                solutions.drawing_styles.get_default_hand_landmarks_style(),
-                solutions.drawing_styles.get_default_hand_connections_style())
-
-            # Draw handedness text
-            if handedness:
-                height, width, _ = annotated_image.shape
-                x_coords = [landmark.x for landmark in hand_landmarks]
-                y_coords = [landmark.y for landmark in hand_landmarks]
-                text_x = int(min(x_coords) * width)
-                text_y = int(min(y_coords) * height) - MARGIN
-                
-                cv2.putText(annotated_image, f"{handedness[0].category_name}",
-                           (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
-                           FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
-
-        # Convert RGB to BGR for OpenCV and update shared frame
-        annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
-        with frame_lock:
-            latest_annotated_frame = annotated_image_bgr
-            
-    except Exception as e:
-        print(f"Error in callback: {e}")
+def hand_landmark_callback(result: vision.HandLandmarkerResult, image: mp.Image, timestamp_ms: int):
+    global hand_results
+    with results_lock:
+        hand_results[timestamp_ms] = (result.hand_landmarks or [], result.handedness or [])
+        if timestamp_ms in face_results:
+            process_and_combine_landmarks(timestamp_ms)
 
 # Initialize webcam
 cap = cv2.VideoCapture(0)
@@ -73,45 +111,50 @@ if not cap.isOpened():
     print("Error: Could not open video stream.")
     exit()
 
-# Configure MediaPipe Hand Landmarker
-model_path = 'models/hand_landmarker.task'  # Update this path
+# Configure MediaPipe Face and Hand Landmarker
+face_model_path = 'models/face_landmarker.task'  # Update this path
+hand_model_path = 'models/hand_landmarker.task'  # Update this path
 BaseOptions = mp.tasks.BaseOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
-options = vision.HandLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path=model_path),
+face_options = vision.FaceLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=face_model_path),
     running_mode=VisionRunningMode.LIVE_STREAM,
-    result_callback=draw_landmarks_on_image,
+    result_callback=face_landmark_callback,
+    num_faces=2)
+
+hand_options = vision.HandLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=hand_model_path),
+    running_mode=VisionRunningMode.LIVE_STREAM,
+    result_callback=hand_landmark_callback,
     num_hands=2)
 
-with vision.HandLandmarker.create_from_options(options) as landmarker:
+with vision.FaceLandmarker.create_from_options(face_options) as face_landmarker, \
+     vision.HandLandmarker.create_from_options(hand_options) as hand_landmarker:
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-
-        # Convert frame to RGB and process
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        
+        rgb_frame = cv2.cvtColor(cv2.flip(frame, 1), cv2.COLOR_BGR2RGB)
         timestamp_ms = int(cv2.getTickCount() / cv2.getTickFrequency() * 1000)
         
-        # Perform async detection
-        landmarker.detect_async(mp_image, timestamp_ms)
+        with results_lock:
+            original_frames[timestamp_ms] = rgb_frame.copy()
+        
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        face_landmarker.detect_async(mp_image, timestamp_ms)
+        hand_landmarker.detect_async(mp_image, timestamp_ms)
 
-        # Display the latest annotated frame
-        with frame_lock:
-            display_frame = latest_annotated_frame if latest_annotated_frame is not None else frame
+        display_frame = latest_annotated_frame if latest_annotated_frame is not None else frame
 
-        # Calculate FPS
         curr_time = time.time()
-        fps = 1 / (curr_time - prev_time)
+        fps = 1 / (curr_time - prev_time) if (curr_time - prev_time) != 0 else 0
         prev_time = curr_time
-
-        # Display FPS on image
         cv2.putText(display_frame, f'FPS: {int(fps)}', (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
         
-        cv2.imshow('Hand Landmarker', display_frame)
+        cv2.imshow('Landmarker', display_frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
