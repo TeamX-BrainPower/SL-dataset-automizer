@@ -1,86 +1,107 @@
 import cv2
 import mediapipe as mp
-import time
+from mediapipe.tasks.python import vision
+from mediapipe import solutions
+import numpy as np
+import threading
+from mediapipe.framework.formats import landmark_pb2
 
-# Initialize MediaPipe solutions
-mp_hands = mp.solutions.hands
-mp_holistic = mp.solutions.holistic
-mp_drawing = mp.solutions.drawing_utils
+# Global variables for sharing annotated frames between threads
+latest_annotated_frame = None
+frame_lock = threading.Lock()
 
-# Initialize the webcam
+# Visualization parameters
+MARGIN = 10  # pixels
+FONT_SIZE = 1
+FONT_THICKNESS = 1
+HANDEDNESS_TEXT_COLOR = (88, 205, 54)  # vibrant green
+
+def draw_landmarks_on_image(result: vision.HandLandmarkerResult, image: mp.Image, timestamp_ms: int):
+    global latest_annotated_frame
+    
+    try:
+        # Convert MediaPipe Image to numpy array (RGB format)
+        annotated_image = image.numpy_view().copy()
+        hand_landmarks_list = result.hand_landmarks or []
+        handedness_list = result.handedness or []
+
+        # Loop through detected hands
+        for idx in range(len(hand_landmarks_list)):
+            hand_landmarks = hand_landmarks_list[idx]
+            handedness = handedness_list[idx]
+
+            # Draw hand landmarks
+            hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
+            hand_landmarks_proto.landmark.extend([
+              landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) for landmark in hand_landmarks
+            ])
+            
+            solutions.drawing_utils.draw_landmarks(
+                annotated_image,
+                hand_landmarks_proto,
+                solutions.hands.HAND_CONNECTIONS,
+                solutions.drawing_styles.get_default_hand_landmarks_style(),
+                solutions.drawing_styles.get_default_hand_connections_style())
+
+            # Draw handedness text
+            if handedness:
+                height, width, _ = annotated_image.shape
+                x_coords = [landmark.x for landmark in hand_landmarks]
+                y_coords = [landmark.y for landmark in hand_landmarks]
+                text_x = int(min(x_coords) * width)
+                text_y = int(min(y_coords) * height) - MARGIN
+                
+                cv2.putText(annotated_image, f"{handedness[0].category_name}",
+                           (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
+                           FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
+
+        # Convert RGB to BGR for OpenCV and update shared frame
+        annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+        with frame_lock:
+            latest_annotated_frame = annotated_image_bgr
+            
+    except Exception as e:
+        print(f"Error in callback: {e}")
+
+# Initialize webcam
 cap = cv2.VideoCapture(0)
-prev_time = 0
-use_holistic = False  # Toggle flag
+if not cap.isOpened():
+    print("Error: Could not open video stream.")
+    exit()
 
-# Initialize models once
-hands = mp_hands.Hands(
-    static_image_mode=False,
-    max_num_hands=2,
-    model_complexity=1,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5)
+# Configure MediaPipe Hand Landmarker
+model_path = 'models/hand_landmarker.task'  # Update this path
+BaseOptions = mp.tasks.BaseOptions
+VisionRunningMode = mp.tasks.vision.RunningMode
 
-holistic = mp_holistic.Holistic(
-    static_image_mode=False,
-    model_complexity=1,
-    enable_segmentation=False,
-    refine_face_landmarks=True,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5)
+options = vision.HandLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=model_path),
+    running_mode=VisionRunningMode.LIVE_STREAM,
+    result_callback=draw_landmarks_on_image,
+    num_hands=2)
 
-try:
+with vision.HandLandmarker.create_from_options(options) as landmarker:
     while cap.isOpened():
-        success, image = cap.read()
-        if not success:
-            print("Ignoring empty camera frame.")
-            continue
-
-        image = cv2.flip(image, 1)
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # Process the image and get the result
-        if use_holistic:
-            results = holistic.process(image_rgb)
-        else:
-            results = hands.process(image_rgb)
-
-        # Draw landmarks
-        if use_holistic:
-            if results.face_landmarks:
-                mp_drawing.draw_landmarks(
-                    image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION)
-            if results.left_hand_landmarks:
-                mp_drawing.draw_landmarks(
-                    image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-            if results.right_hand_landmarks:
-                mp_drawing.draw_landmarks(
-                    image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-            if results.pose_landmarks:
-                mp_drawing.draw_landmarks(
-                    image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
-        else:
-            if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    mp_drawing.draw_landmarks(
-                        image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-
-        # Calculate FPS
-        curr_time = time.time()
-        fps = 1 / (curr_time - prev_time)
-        prev_time = curr_time
-
-        # Display FPS on image
-        cv2.putText(image, f'FPS: {int(fps)}', (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-
-        cv2.imshow('MediaPipe Detection', image)
-        key = cv2.waitKey(5)
-        if key & 0xFF == 27:  # Press 'Esc' to exit
+        ret, frame = cap.read()
+        if not ret:
             break
-        elif key & 0xFF == ord('t'):  # Press 't' to toggle between modes
-            use_holistic = not use_holistic
-finally:
-    cap.release()
-    cv2.destroyAllWindows()
-    hands.close()
-    holistic.close()
+
+        # Convert frame to RGB and process
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        timestamp_ms = int(cv2.getTickCount() / cv2.getTickFrequency() * 1000)
+        
+        # Perform async detection
+        landmarker.detect_async(mp_image, timestamp_ms)
+
+        # Display the latest annotated frame
+        with frame_lock:
+            display_frame = latest_annotated_frame if latest_annotated_frame is not None else frame
+        
+        cv2.imshow('Hand Landmarker', display_frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+cap.release()
+cv2.destroyAllWindows()
