@@ -7,7 +7,10 @@ import cv2
 
 # Initialize the webcam to capture video
 # The '2' indicates the third camera connected to your computer; '0' would usually refer to the built-in camera
-cap = cv2.VideoCapture(0)
+# Or, provide a path or URL to capture over a pre-recorded video file
+# cap = cv2.VideoCapture(0)
+# cap = cv2.VideoCapture('video_data\matematikk.mp4')
+cap = cv2.VideoCapture('https://www.minetegn.no/Tegnordbok-HTML/video_/matematikk.mp4')
 prev_time = 0
 
 
