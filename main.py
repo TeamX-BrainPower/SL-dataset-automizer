@@ -8,7 +8,7 @@ mp_drawing = mp.solutions.drawing_utils
 
 cap = cv2.VideoCapture(0)
 prev_time = 0
-use_holistic = True  # Toggle flag
+use_holistic = False  # Toggle flag
 
 while cap.isOpened():
     success, image = cap.read()
