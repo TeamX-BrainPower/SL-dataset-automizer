@@ -33,3 +33,5 @@ coverage.xml
 .idea
 data/raw/*
 data/processed/*
+
+*.mp4
