@@ -31,4 +31,5 @@ coverage.xml
 
 .venv
 .idea
-parsed-output/
+data/raw/*
+data/processed/*
