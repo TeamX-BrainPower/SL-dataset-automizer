@@ -18,14 +18,16 @@ def create_top_json(word, total_frame_count, video_frame_rate):
         "frameData": []
     }
 
-def format_frame_info_into_json(hand_result, face_result, gesture_result, frame):
+
+def format_frame_info_into_json(hand_result, face_result, gesture_result, pose_result, frame):
     """
-    Build a JSON-friendly dict combining hand landmarks, face landmarks, and gesture recognition.
+    Build a JSON-friendly dict combining hand landmarks, face landmarks, gesture recognition, and pose landmarks.
     
     Parameters:
     - hand_result: MediaPipe hand detection result
     - face_result: MediaPipe face detection result
     - gesture_result: MediaPipe gesture recognition result
+    - pose_result: MediaPipe pose detection result
     - frame: Current frame number
     
     Returns:
@@ -35,7 +37,8 @@ def format_frame_info_into_json(hand_result, face_result, gesture_result, frame)
         "frame": frame,
         "hands": [],
         "face": [],
-        "gestures": []
+        "gestures": [],
+        "pose": []
     }
     
     # Process hand landmarks and handedness
@@ -68,6 +71,16 @@ def format_frame_info_into_json(hand_result, face_result, gesture_result, frame)
                 "index": int(gesture[0].index)
             }
             frame_info["gestures"].append(gesture_info)
+            
+    # Process pose landmarks
+    if pose_result and pose_result.pose_landmarks:
+        for pose_landmarks in pose_result.pose_landmarks:
+            pose_info = {
+                "landmarks": [
+                    {"x": lm.x, "y": lm.y, "z": lm.z} for lm in pose_landmarks
+                ]
+            }
+            frame_info["pose"].append(pose_info)
     
     return frame_info
 
@@ -180,23 +193,32 @@ def draw_pose_landmarks_on_image(annotated_image, pose_landmarks_list):
 # ---------------------------
 # Main Processing
 # ---------------------------
-def main():
+def main(sign_word):
     # Video source and sign word
-    sign_word = "daarlig"
-    sign_word = "seier"
-    sign_word = "gi-opp-2"
     video_url = f"https://www.minetegn.no/Tegnordbok-HTML/video_/{sign_word}.mp4"
 
-    cap = cv2.VideoCapture(video_url)
+    if sign_word is None or sign_word == "":
+        cap = cv2.VideoCapture(0)
+            # Get video info for JSON header (if available)
+        total_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        video_frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+        frame_count = 0
+        json_builder = create_top_json("Test", total_frame_count, video_frame_rate)
+
+
+    else:
+        cap = cv2.VideoCapture(video_url)
+            # Get video info for JSON header (if available)
+        total_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        video_frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+        frame_count = 0
+        json_builder = create_top_json(sign_word, total_frame_count, video_frame_rate)
+
     if not cap.isOpened():
         print("Error: Could not open video stream.")
         return
 
-    # Get video info for JSON header (if available)
-    total_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    video_frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
-    json_builder = create_top_json(sign_word, total_frame_count, video_frame_rate)
-    frame_count = 0
+
 
     # Configure MediaPipe Face and Hand Landmarker
     face_model_path = 'models/face_landmarker.task'  # Update this path if needed
@@ -260,7 +282,7 @@ def main():
 
 
             # --- JSON building from hand detection ---
-            frame_info = format_frame_info_into_json(hand_result=hand_result, face_result=None, gesture_result=gesture_recognition_result, frame=frame_count)
+            frame_info = format_frame_info_into_json(hand_result=hand_result, face_result=None, gesture_result=gesture_recognition_result, pose_result=pose_landmarker_result, frame=frame_count)
             json_builder["frameData"].append(frame_info)
             frame_count += 1
 
@@ -295,4 +317,5 @@ def main():
     print(f"JSON data saved to parsed-output/{sign_word}.json")
 
 if __name__ == "__main__":
-    main()
+    sign_word = input("Enter the sign word to parse: ")
+    main(sign_word)
