@@ -6,6 +6,27 @@ import numpy as np
 import threading
 from mediapipe.framework.formats import landmark_pb2
 import time
+import queue
+
+# Add frame queue and thread control
+frame_queue = queue.Queue(maxsize=5)
+should_stop = threading.Event()
+
+def capture_frames(cap):
+    while not should_stop.is_set():
+        ret, frame = cap.read()
+        if not ret:
+            break
+            
+        # Clear queue to always have most recent frame
+        while not frame_queue.empty():
+            try:
+                frame_queue.get_nowait()
+            except queue.Empty:
+                break
+                
+        frame_queue.put(frame)
+    cap.release()
 
 # Global variables for FPS calculation
 prev_time = 0
@@ -105,11 +126,19 @@ def hand_landmark_callback(result: vision.HandLandmarkerResult, image: mp.Image,
         if timestamp_ms in face_results:
             process_and_combine_landmarks(timestamp_ms)
 
-# Initialize webcam
+# Initialize webcam and start capture thread
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     print("Error: Could not open video stream.")
     exit()
+
+# Reduce frame resolution
+# cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640/32)
+# cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480/32)
+
+# Start capture thread
+capture_thread = threading.Thread(target=capture_frames, args=(cap,), daemon=True)
+capture_thread.start()
 
 # Configure MediaPipe Face and Hand Landmarker
 face_model_path = 'models/face_landmarker.task'  # Update this path
@@ -129,12 +158,14 @@ hand_options = vision.HandLandmarkerOptions(
     result_callback=hand_landmark_callback,
     num_hands=2)
 
+# Modify main processing loop
 with vision.FaceLandmarker.create_from_options(face_options) as face_landmarker, \
      vision.HandLandmarker.create_from_options(hand_options) as hand_landmarker:
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+    while not should_stop.is_set():
+        try:
+            frame = frame_queue.get(timeout=1.0)
+        except queue.Empty:
+            continue
         
         rgb_frame = cv2.cvtColor(cv2.flip(frame, 1), cv2.COLOR_BGR2RGB)
         timestamp_ms = int(cv2.getTickCount() / cv2.getTickFrequency() * 1000)
@@ -157,7 +188,11 @@ with vision.FaceLandmarker.create_from_options(face_options) as face_landmarker,
         cv2.imshow('Landmarker', display_frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
+            should_stop.set()
             break
 
-cap.release()
+# Cleanup
+should_stop.set()
+if capture_thread.is_alive():
+    capture_thread.join()
 cv2.destroyAllWindows()
