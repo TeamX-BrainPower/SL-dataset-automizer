@@ -2,3 +2,4 @@
 .idea
 /__pycache__
 /packages/__pycache__
+/parsed-output
