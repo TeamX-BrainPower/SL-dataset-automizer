@@ -3,9 +3,9 @@ from dataclasses import dataclass
 
 @dataclass
 class ProcessingConfig:
-    face_model_path: str = 'models/face_landmarker.task'
-    hand_model_path: str = 'models/hand_landmarker.task'
-    output_dir: str = '../data/raw'
+    face_model_path: str = 'src/models/face_landmarker.task'
+    hand_model_path: str = 'src/models/hand_landmarker.task'
+    output_dir: str = 'data/raw'
     num_faces: int = 1
     num_hands: int = 2
     display_output: bool = True
