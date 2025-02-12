@@ -3,10 +3,10 @@ import time
 import mediapipe as mp
 from pathlib import Path
 
-from src.config import ProcessingConfig
-from src.data.processors import JSONProcessor, TFRecordProcessor
-from src.models.landmarker import LandmarkerFactory
-from src.visualization.drawer import LandmarkDrawer
+from config import ProcessingConfig
+from data.processors import JSONProcessor, TFRecordProcessor
+from models.landmarker import LandmarkerFactory
+from visualization.drawer import LandmarkDrawer
 
 
 class VideoProcessor:
