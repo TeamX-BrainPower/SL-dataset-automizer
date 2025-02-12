@@ -2,7 +2,7 @@ import mediapipe as mp
 from mediapipe.tasks.python import vision
 import cv2
 from contextlib import contextmanager
-from src.config import ProcessingConfig
+from config import ProcessingConfig
 
 
 class LandmarkerFactory:
