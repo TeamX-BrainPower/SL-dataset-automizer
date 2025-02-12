@@ -37,15 +37,15 @@ finger_chains = [
 wrist_connections = [1, 5, 9, 13, 17]
 
 # Base line for fingers
-base_line = [5, 9 ,13, 17]
+base_line = [5, 9, 13, 17]
 
 
 
 # Main func
 def main():
-    data = load_json('abort')
-    trajectories = process_landmarks(data)
-    display_dynamic(trajectories)
+    data = load_json('adjektiv')
+    landmark_trajectories = process_landmarks(data)
+    display_dynamic(landmark_trajectories)
     
 
 # Load and return file_name.json
@@ -57,18 +57,22 @@ def load_json(file_name):
 
 # Process landmarks for display functions
 def process_landmarks(data):
-    landmark_trajectories = {}
+    landmark_trajectories = {
+        "Left": {},
+        "Right": {}
+    }
     
     for frame in data["frameData"]:
         for hand in frame["hands"]:
             hand_marks = hand["landmarks"]
+            hand_key = hand["handedness"]
             for i, landmark in enumerate(hand_marks):
-                if i not in landmark_trajectories:
-                    landmark_trajectories[i] = {"x": [], "y": [], "z": [], "frame": []}
-                landmark_trajectories[i]["x"].append(landmark["x"])
-                landmark_trajectories[i]["y"].append(landmark["y"])
-                landmark_trajectories[i]["z"].append(landmark["z"])
-                landmark_trajectories[i]["frame"].append(frame["frame"])
+                if i not in landmark_trajectories[hand_key]:
+                    landmark_trajectories[hand_key][i] = {"x": [], "y": [], "z": [], "frame": []}
+                landmark_trajectories[hand_key][i]["x"].append(landmark["x"])
+                landmark_trajectories[hand_key][i]["y"].append(landmark["y"])
+                landmark_trajectories[hand_key][i]["z"].append(landmark["z"])
+                landmark_trajectories[hand_key][i]["frame"].append(frame["frame"])
                 
     return landmark_trajectories
 
@@ -78,88 +82,141 @@ def display_dynamic(landmark_trajectories, interval=50):
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
 
+    x_min = 0
+    x_max = 0
+    y_min = 0
+    y_max = 0
+    z_min = 0
+    z_max = 0
+
     # Compute min/max values for better zoom control
-    x_min = min(min(traj["x"]) for traj in landmark_trajectories.values())
-    x_max = max(max(traj["x"]) for traj in landmark_trajectories.values())
-    y_min = min(min(traj["y"]) for traj in landmark_trajectories.values())
-    y_max = max(max(traj["y"]) for traj in landmark_trajectories.values())
-    z_min = min(min(traj["z"]) for traj in landmark_trajectories.values())
-    z_max = max(max(traj["z"]) for traj in landmark_trajectories.values())
+    if landmark_trajectories["Left"].values():
+        x_min = min(min(traj["x"]) for traj in landmark_trajectories["Left"].values())
+        x_max = max(max(traj["x"]) for traj in landmark_trajectories["Left"].values())
+        y_min = min(min(traj["y"]) for traj in landmark_trajectories["Left"].values())
+        y_max = max(max(traj["y"]) for traj in landmark_trajectories["Left"].values())
+        z_min = min(min(traj["z"]) for traj in landmark_trajectories["Left"].values())
+        z_max = max(max(traj["z"]) for traj in landmark_trajectories["Left"].values())
+
+    # Consider the right hand as well
+    if landmark_trajectories["Right"].values():
+        x_min = min(x_min, min(min(traj["x"]) for traj in landmark_trajectories["Right"].values()))
+        x_max = max(x_max, max(max(traj["x"]) for traj in landmark_trajectories["Right"].values()))
+        y_min = min(y_min, min(min(traj["y"]) for traj in landmark_trajectories["Right"].values()))
+        y_max = max(y_max, max(max(traj["y"]) for traj in landmark_trajectories["Right"].values()))
+        z_min = min(z_min, min(min(traj["z"]) for traj in landmark_trajectories["Right"].values()))
+        z_max = max(z_max, max(max(traj["z"]) for traj in landmark_trajectories["Right"].values()))
 
     margin = 0.1  # 10% margin
     ax.set_xlim(x_min - margin, x_max + margin)
     ax.set_ylim(y_min - margin, y_max + margin)
     ax.set_zlim(z_min - margin, z_max + margin)
 
-    # Initialize line objects for each landmark
-    lines = {i: ax.plot([], [], [], color=landmark_colors[i], linewidth=1)[0] for i in landmark_trajectories}
+    # Initialize line objects for each landmark (left and right hands)
+    lines_left = {i: ax.plot([], [], [], color=landmark_colors[i], linewidth=1)[0] for i in landmark_trajectories["Left"]}
+    lines_right = {i: ax.plot([], [], [], color=landmark_colors[i], linewidth=1)[0] for i in landmark_trajectories["Right"]}
 
-    # Initialize line objects for finger chains
-    finger_lines = {tuple(chain): ax.plot([], [], [], color=landmark_colors[chain[0]], linewidth=2)[0] for chain in finger_chains}
+    # Initialize line objects for finger chains (left and right hands)
+    finger_lines_left = {tuple(chain): ax.plot([], [], [], color=landmark_colors[chain[0]], linewidth=2)[0] for chain in finger_chains}
+    finger_lines_right = {tuple(chain): ax.plot([], [], [], color=landmark_colors[chain[0]], linewidth=2)[0] for chain in finger_chains}
 
     # Initialize lines for wrist connections
-    wrist_lines = {i: ax.plot([], [], [], color="black", linestyle="dashed", linewidth=1)[0] for i in wrist_connections}
+    wrist_lines_left = {i: ax.plot([], [], [], color="black", linestyle="dashed", linewidth=1)[0] for i in wrist_connections}
+    wrist_lines_right = {i: ax.plot([], [], [], color="black", linestyle="dashed", linewidth=1)[0] for i in wrist_connections}
 
     # Initialize line for the additional base connection (5 → 9 → 13 → 17)
-    base_line_plot = ax.plot([], [], [], color="black", linestyle="dashed", linewidth=1)[0]
+    base_line_plot_left = ax.plot([], [], [], color="black", linestyle="dashed", linewidth=1)[0]
+    base_line_plot_right = ax.plot([], [], [], color="black", linestyle="dashed", linewidth=1)[0]
 
-    # Scatter points for the start of each trajectory
-    start_points = {i: ax.scatter([], [], [], color=landmark_colors[i], s=50, zorder=5) for i in landmark_trajectories}
+    # Scatter points for the start of each trajectory (left and right hands)
+    start_points_left = {i: ax.scatter([], [], [], color=landmark_colors[i], s=50, zorder=5) for i in landmark_trajectories["Left"]}
+    start_points_right = {i: ax.scatter([], [], [], color=landmark_colors[i], s=50, zorder=5) for i in landmark_trajectories["Right"]}
 
     ax.set_xlabel("X Coordinate")
     ax.set_ylabel("Y Coordinate")
     ax.set_zlabel("Z Coordinate")
     ax.set_title("Hand Landmark 3D Animated Trajectories")
-    
+
     # Set the camera angle to resemble the video perspective
     ax.view_init(elev=90, azim=90)  # Set elevation and azimuthal angles here
     ax.dist = 8  # Set distance from the viewer to the plot
 
-    max_frames = max(len(traj["frame"]) for traj in landmark_trajectories.values())
-
+    max_frames = 0
+    if landmark_trajectories["Left"].values():
+        max_frames = max(max_frames, max(len(landmark["frame"]) for landmark in landmark_trajectories["Left"].values()))
+    if landmark_trajectories["Right"].values():
+        max_frames = max(max_frames, max(len(landmark["frame"]) for landmark in landmark_trajectories["Right"].values()))
+    
     def update(frame):
         """Update function for the animation"""
-        # for i, trajectory in landmark_trajectories.items():
-        #     x_data = trajectory["x"][:frame]
-        #     y_data = trajectory["y"][:frame]
-        #     z_data = trajectory["z"][:frame]
 
-        #     # Update trajectory lines
-        #     lines[i].set_data(x_data, y_data)
-        #     lines[i].set_3d_properties(z_data)
-
-        #     # Keep start points fixed
-        #     if frame == 1:
-        #         start_points[i]._offsets3d = (np.array([x_data[0]]), np.array([y_data[0]]), np.array([z_data[0]]))
-
-        # Update finger chains
+        # Update finger chains for both hands
         for chain in finger_chains:
-            x_chain = [landmark_trajectories[i]["x"][frame - 1] for i in chain]
-            y_chain = [landmark_trajectories[i]["y"][frame - 1] for i in chain]
-            z_chain = [landmark_trajectories[i]["z"][frame - 1] for i in chain]
-            finger_lines[tuple(chain)].set_data(x_chain, y_chain)
-            finger_lines[tuple(chain)].set_3d_properties(z_chain)
+            if landmark_trajectories["Left"].values():
+                if frame < len(landmark_trajectories["Left"][0]["x"]):
+                    x_chain = [landmark_trajectories["Left"][i]["x"][frame] for i in chain]
+                    y_chain = [landmark_trajectories["Left"][i]["y"][frame] for i in chain]
+                    z_chain = [landmark_trajectories["Left"][i]["z"][frame] for i in chain]
+                finger_lines_left[tuple(chain)].set_data(x_chain, y_chain)
+                finger_lines_left[tuple(chain)].set_3d_properties(z_chain)
+            
+            if landmark_trajectories["Right"].values():
+                if frame < len(landmark_trajectories["Right"][0]["x"]):
+                    x_chain = [landmark_trajectories["Right"][i]["x"][frame] for i in chain]
+                    y_chain = [landmark_trajectories["Right"][i]["y"][frame] for i in chain]
+                    z_chain = [landmark_trajectories["Right"][i]["z"][frame] for i in chain]
+                finger_lines_right[tuple(chain)].set_data(x_chain, y_chain)
+                finger_lines_right[tuple(chain)].set_3d_properties(z_chain)
+            
 
-        # Update wrist connections
+        # Update wrist connections for both hands
         for i in wrist_connections:
-            x_wrist = [landmark_trajectories[0]["x"][frame - 1], landmark_trajectories[i]["x"][frame - 1]]
-            y_wrist = [landmark_trajectories[0]["y"][frame - 1], landmark_trajectories[i]["y"][frame - 1]]
-            z_wrist = [landmark_trajectories[0]["z"][frame - 1], landmark_trajectories[i]["z"][frame - 1]]
-            wrist_lines[i].set_data(x_wrist, y_wrist)
-            wrist_lines[i].set_3d_properties(z_wrist)
+            if landmark_trajectories["Left"].values():
+                if frame < len(landmark_trajectories["Left"][0]["x"]):
+                    x_wrist = [landmark_trajectories["Left"][0]["x"][frame], landmark_trajectories["Left"][i]["x"][frame]]
+                    y_wrist = [landmark_trajectories["Left"][0]["y"][frame], landmark_trajectories["Left"][i]["y"][frame]]
+                    z_wrist = [landmark_trajectories["Left"][0]["z"][frame], landmark_trajectories["Left"][i]["z"][frame]]
+                wrist_lines_left[i].set_data(x_wrist, y_wrist)
+                wrist_lines_left[i].set_3d_properties(z_wrist)
+            
+            if landmark_trajectories["Right"].values():
+                if frame < len(landmark_trajectories["Right"][0]["x"]):
+                    x_wrist = [landmark_trajectories["Right"][0]["x"][frame], landmark_trajectories["Right"][i]["x"][frame]]
+                    y_wrist = [landmark_trajectories["Right"][0]["y"][frame], landmark_trajectories["Right"][i]["y"][frame]]
+                    z_wrist = [landmark_trajectories["Right"][0]["z"][frame], landmark_trajectories["Right"][i]["z"][frame]]
+                wrist_lines_right[i].set_data(x_wrist, y_wrist)
+                wrist_lines_right[i].set_3d_properties(z_wrist)
 
-        # Update base connection line (5 → 9 → 13 → 17)
-        x_base = [landmark_trajectories[i]["x"][frame - 1] for i in base_line]
-        y_base = [landmark_trajectories[i]["y"][frame - 1] for i in base_line]
-        z_base = [landmark_trajectories[i]["z"][frame - 1] for i in base_line]
-        base_line_plot.set_data(x_base, y_base)
-        base_line_plot.set_3d_properties(z_base)
 
-        return list(lines.values()) + list(finger_lines.values()) + list(wrist_lines.values()) + list(start_points.values()) + [base_line_plot]
+        # Update base connection line (5 → 9 → 13 → 17 for both hands)
+        x_base_left = []
+        y_base_left = []
+        z_base_left = []
+        if landmark_trajectories["Left"].values():
+            if frame < len(landmark_trajectories["Left"][0]["x"]):
+                x_base_left = [landmark_trajectories["Left"][i]["x"][frame] for i in base_line]
+                y_base_left = [landmark_trajectories["Left"][i]["y"][frame] for i in base_line]
+                z_base_left = [landmark_trajectories["Left"][i]["z"][frame] for i in base_line]
+        base_line_plot_left.set_data(x_base_left, y_base_left)
+        base_line_plot_left.set_3d_properties(z_base_left)
+
+        x_base_right = []
+        y_base_right = []
+        z_base_right = []
+        if landmark_trajectories["Right"].values():
+            if frame < len(landmark_trajectories["Right"][0]["x"]):
+                x_base_right = [landmark_trajectories["Right"][i]["x"][frame] for i in base_line]
+                y_base_right = [landmark_trajectories["Right"][i]["y"][frame] for i in base_line]
+                z_base_right = [landmark_trajectories["Right"][i]["z"][frame] for i in base_line]
+        base_line_plot_right.set_data(x_base_right, y_base_right)
+        base_line_plot_right.set_3d_properties(z_base_right)
+
+        return list(lines_left.values()) + list(lines_right.values()) + list(finger_lines_left.values()) + list(finger_lines_right.values()) + list(wrist_lines_left.values()) + list(wrist_lines_right.values()) + list(start_points_left.values()) + list(start_points_right.values()) + [base_line_plot_left] + [base_line_plot_right]
 
     ani = animation.FuncAnimation(fig, update, frames=max_frames, interval=interval, blit=True)
 
     plt.show()
+
     
 
 if __name__ == "__main__":
