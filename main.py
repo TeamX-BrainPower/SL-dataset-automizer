@@ -37,6 +37,8 @@ def format_frame_info_into_json(hand_result, frame):
     return frame_info
 
 def save_json_file(file_name, data):
+    from os import makedirs
+    makedirs('parsed-output', exist_ok=True)
     # Save the collected data to a JSON file in folder "parsed-output"
     with open(f'parsed-output/{file_name}.json', 'w') as f:
         json.dump(data, f, indent=4)
