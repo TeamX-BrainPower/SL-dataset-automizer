@@ -141,15 +141,7 @@ def draw_hand_landmarks_on_image(annotated_image, hand_landmarks_list, handednes
             #             (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
             #             FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
 
-""" 
-def draw_gesture_recognition_results(annotated_image, gestures):
-    for gesture in gestures:
-        category_name = gesture[0].category_name
-        score = gesture[0].score
-        index = gesture[0].index
-        solutions.drawing_utils.draw_landmarks(
-            annotated_image, gesture[0].landmarks, solutions.hands.HAND_CONNECTIONS, solutions.drawing_styles.get_default_hand_landmarks_style(), solutions.drawing_styles.get_default_hand_connections_style())
- """        
+      
 
 def draw_gesture_recognition_results(annotated_image, gestures):
     height, _ = annotated_image.shape[:2]
@@ -169,6 +161,20 @@ def draw_gesture_recognition_results(annotated_image, gestures):
             (0, 255, 0),  # Green color
             2
         )
+
+
+def draw_pose_landmarks_on_image(annotated_image, pose_landmarks_list):
+    for pose_landmarks in pose_landmarks_list:
+        pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
+        pose_landmarks_proto.landmark.extend([
+            landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z)
+            for landmark in pose_landmarks
+        ])
+        solutions.drawing_utils.draw_landmarks(
+            image=annotated_image,
+            landmark_list=pose_landmarks_proto,
+            connections=solutions.pose.POSE_CONNECTIONS,
+            landmark_drawing_spec=None)
 
 
 # ---------------------------
@@ -196,6 +202,7 @@ def main():
     face_model_path = 'models/face_landmarker.task'  # Update this path if needed
     hand_model_path = 'models/hand_landmarker.task'  # Update this path if needed
     gesture_model_path = 'models/gesture_recognizer.task'  # Update this path if needed
+    pose_model_path = 'models/pose_landmarker_lite.task'  # Update this path if needed
 
     BaseOptions = mp.tasks.BaseOptions
     VisionRunningMode = mp.tasks.vision.RunningMode
@@ -218,11 +225,17 @@ def main():
         running_mode=VisionRunningMode.VIDEO,
         num_hands=2)
     
+    pose_options = vision.PoseLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=pose_model_path),
+        running_mode=VisionRunningMode.VIDEO,
+        num_poses=2)
+    
 
     # Initialize the landmark detectors using a context manager
     with vision.FaceLandmarker.create_from_options(face_options) as face_landmarker, \
          vision.HandLandmarker.create_from_options(hand_options) as hand_landmarker, \
-         vision.GestureRecognizer.create_from_options(gesture_options) as recognizer:
+         vision.GestureRecognizer.create_from_options(gesture_options) as recognizer, \
+         vision.PoseLandmarker.create_from_options(pose_options) as pose_landmarker:
 
         prev_time = time.time()
         while cap.isOpened():
@@ -242,6 +255,8 @@ def main():
             face_result = face_landmarker.detect_for_video(mp_image, timestamp_ms)
             hand_result = hand_landmarker.detect_for_video(mp_image, timestamp_ms)
             gesture_recognition_result = recognizer.recognize_for_video(mp_image, timestamp_ms)
+            pose_landmarker_result = pose_landmarker.detect_for_video(mp_image, timestamp_ms)
+
 
 
             # --- JSON building from hand detection ---
@@ -257,6 +272,8 @@ def main():
                 draw_hand_landmarks_on_image(annotated_image, hand_result.hand_landmarks, hand_result.handedness)
             if gesture_recognition_result: 
                 draw_gesture_recognition_results(annotated_image, gesture_recognition_result.gestures)
+            if pose_landmarker_result and pose_landmarker_result.pose_landmarks:
+                draw_pose_landmarks_on_image(annotated_image, pose_landmarker_result.pose_landmarks)
                 
 
             # Calculate and overlay FPS.
