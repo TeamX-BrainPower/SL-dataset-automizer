@@ -31,5 +31,8 @@ coverage.xml
 
 .venv
 .idea
+/__pycache__
+/packages/__pycache__
+/parsed-output
 data/raw/*
 data/processed/*
