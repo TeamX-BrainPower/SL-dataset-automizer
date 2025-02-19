@@ -1,34 +1,15 @@
-import mediapipe as mp
+from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-import cv2
-from contextlib import contextmanager
-from config import ProcessingConfig
 
 
 class LandmarkerFactory:
     @staticmethod
-    @contextmanager
-    def create_landmarkers(config):
-        base_options = mp.tasks.BaseOptions
-        vision_mode = mp.tasks.vision.RunningMode
-
-        face_options = vision.FaceLandmarkerOptions(
-            base_options=base_options(model_asset_path=config.face_model_path),
-            running_mode=vision_mode.VIDEO,
-            num_faces=config.num_faces
+    def create_hand_landmarker(config):
+        base_options = python.BaseOptions(model_asset_path='models/hand_landmarker.task')
+        options = vision.HandLandmarkerOptions(
+            base_options=base_options,
+            num_hands=2,
+            min_hand_detection_confidence=0.5,
+            running_mode=vision.RunningMode.VIDEO  # Set to video mode
         )
-
-        hand_options = vision.HandLandmarkerOptions(
-            base_options=base_options(model_asset_path=config.hand_model_path),
-            running_mode=vision_mode.VIDEO,
-            num_hands=config.num_hands
-        )
-
-        face_landmarker = vision.FaceLandmarker.create_from_options(face_options)
-        hand_landmarker = vision.HandLandmarker.create_from_options(hand_options)
-
-        try:
-            yield face_landmarker, hand_landmarker
-        finally:
-            face_landmarker.close()
-            hand_landmarker.close()
+        return vision.HandLandmarker.create_from_options(options)

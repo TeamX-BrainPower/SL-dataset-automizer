@@ -14,9 +14,7 @@ class SignLanguageRecorderApp:
         self.root.title("Sign Language Recorder")
 
         # Initialize all instance attributes
-        self.config = ProcessingConfig(
-            new_sign_recorder=True
-        )
+        self.config = ProcessingConfig()
         self.video_processor = VideoProcessor(self.config)
         self.recording = False  # Initialize recording flag
         self.countdown_active = False  # Initialize countdown flag
@@ -63,6 +61,11 @@ class SignLanguageRecorderApp:
 
     def setup_video(self):
         self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            messagebox.showerror("Error", "Could not open webcam.")
+            self.root.destroy()
+            return
+
         self.video_running = True
         self.update_video()
 
@@ -105,20 +108,26 @@ class SignLanguageRecorderApp:
         self.recording = True
         self.last_movement_time = time.time()
         self.frame_buffer = []
+
+        # Reinitialize landmarker for new session
+        self.video_processor.create_new_landmarker()
         self.root.after(self.config.recording_timeout * 1000, self.stop_recording)
 
     def detect_movement(self, frame):
         if not self.video_processor.hand_landmarker:
-            print("Hand landmarker is not initialized!")
             return
 
         mp_image = self.video_processor._prepare_frame(frame)
-        hand_result = self.video_processor.hand_landmarker.process(mp_image)
 
-        if hand_result.multi_hand_landmarks:
+        # Correct detection method for Tasks API
+        hand_result = self.video_processor.hand_landmarker.detect_for_video(
+            mp_image,
+            int(time.time() * 1000)  # Timestamp in ms
+        )
+
+        if hand_result.hand_landmarks:
             self.last_movement_time = time.time()
 
-        # Stop if no recent movement
         if (time.time() - self.last_movement_time) > self.config.movement_timeout:
             self.stop_recording()
 
@@ -131,22 +140,24 @@ class SignLanguageRecorderApp:
         self.process_recording()
 
     def process_recording(self):
-        # Use your existing processing logic here
         word = self.word_entry.get()
-        # You'll need to implement save_frames_to_video or similar
         video_path = self._save_frames_to_video()
-        self.video_processor.process_video(video_path, word)
 
         try:
-            os.remove(video_path)
-            print(f"File '{video_path}' deleted successfully.")
-        except FileNotFoundError:
-            print(f"File '{video_path}' not found.")
-
-    def on_close(self):
-        self.video_running = False
-        self.cap.release()
-        self.root.destroy()
+            # Process the video
+            self.video_processor.process_video(video_path, word)
+        except Exception as e:
+            print(f"Error processing video: {e}")
+        finally:
+            # Ensure the file is closed before deletion
+            if os.path.exists(video_path):
+                try:
+                    os.remove(video_path)
+                    print(f"File '{video_path}' deleted successfully.")
+                except PermissionError:
+                    print(f"Failed to delete '{video_path}': File is still in use.")
+                except FileNotFoundError:
+                    print(f"File '{video_path}' not found.")
 
     def _save_frames_to_video(self):
         if not self.frame_buffer:
@@ -161,3 +172,10 @@ class SignLanguageRecorderApp:
 
         out.release()
         return "temp_video.mp4"
+
+    def on_close(self):
+        self.video_running = False
+        self.cap.release()
+        if self.video_processor.hand_landmarker:
+            self.video_processor.hand_landmarker.close()
+        self.root.destroy()

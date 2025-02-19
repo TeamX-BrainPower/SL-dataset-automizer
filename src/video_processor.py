@@ -12,8 +12,11 @@ from visualization.drawer import LandmarkDrawer
 class VideoProcessor:
     def __init__(self, config: ProcessingConfig):
         self.config = config
-        self.face_landmarker = None
         self.hand_landmarker = None
+
+    def create_new_landmarker(self):
+        """Call this before each new recording session"""
+        self.hand_landmarker = LandmarkerFactory.create_hand_landmarker(self.config)
 
     def process_video(self, video_path: str, word: str):
         cap = cv2.VideoCapture(video_path)
@@ -60,6 +63,10 @@ class VideoProcessor:
             ret, frame = cap.read()
             if not ret:
                 break
+
+            # Reinitialize landmarker if needed
+            if not self.hand_landmarker:
+                self.create_new_landmarker()
 
             # Process frame
             mp_image = self._prepare_frame(frame)
