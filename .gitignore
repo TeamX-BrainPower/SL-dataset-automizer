@@ -31,7 +31,7 @@ coverage.xml
 
 .venv
 .idea
-data/raw/*
-data/processed/*
+data/1-raw/*
+data/2-processed/*
 
 *.mp4
