@@ -161,7 +161,3 @@ def display_dynamic(landmark_trajectories, interval=50):
     ani = animation.FuncAnimation(fig, update, frames=max_frames, interval=interval, blit=True)
 
     plt.show()
-    
-
-if __name__ == "__main__":
-    main()

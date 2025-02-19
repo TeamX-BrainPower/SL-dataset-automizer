@@ -1,8 +1,7 @@
+from contextlib import contextmanager
+
 import mediapipe as mp
 from mediapipe.tasks.python import vision
-import cv2
-from contextlib import contextmanager
-from config import ProcessingConfig
 
 
 class LandmarkerFactory:
