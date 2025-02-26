@@ -33,3 +33,10 @@ coverage.xml
 .idea
 data/raw/*
 data/processed/*
+
+label_encoder.pkl
+sign_language_model.keras
+test-data/*
+parsed-output/*
+MS-ASL/*
+data/*
