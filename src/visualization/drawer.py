@@ -19,8 +19,8 @@ class LandmarkDrawer:
     def draw_landmarks(image, face_result, hand_result, gesture_result, pose_result):
         annotated_image = image.copy()
 
-        if face_result and face_result.face_landmarks:
-            LandmarkDrawer._draw_face_landmarks(annotated_image, face_result.face_landmarks)
+        # if face_result and face_result.face_landmarks:
+        #     LandmarkDrawer._draw_face_landmarks(annotated_image, face_result.face_landmarks)
 
         if hand_result and hand_result.hand_landmarks:
             LandmarkDrawer._draw_hand_landmarks(

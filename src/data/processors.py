@@ -38,9 +38,9 @@ class JSONProcessor(DataProcessor):
             "frameData": []
         }
 
-    def process_hands(self, hand_result, frame_num):
-        frame_info = {"frame": frame_num, "hands": []}
+    def process_hands(self, hand_result):
         if hand_result and hand_result.hand_landmarks:
+            self.frame_info["hands"] = []
             for landmarks, handedness in zip(
                     hand_result.hand_landmarks,
                     hand_result.handedness
@@ -52,13 +52,12 @@ class JSONProcessor(DataProcessor):
                         for lm in landmarks
                     ]
                 }
-                frame_info["hands"].append(hand_info)
-        self.data["frameData"].append(frame_info)
+                self.frame_info["hands"].append(hand_info)
 
     
-    def process_face(self, face_result, frame_num):
-        frame_info = {"frame": frame_num, "face": None}
+    def process_face(self, face_result):
         if face_result and face_result.face_landmarks:
+            self.frame_info["face"] = []
             face_info = {
                 "landmarks": [
                     {"x": lm.x, "y": lm.y, "z": lm.z}
@@ -66,33 +65,42 @@ class JSONProcessor(DataProcessor):
                     for lm in face_landmarks
                 ]
             }
-            frame_info["face"] = face_info
-        self.data["frameData"].append(frame_info)
+            self.frame_info["face"] = face_info
 
-    def process_gesture(self, gesture_result, frame_num):
-        frame_info = {"frame": frame_num, "gestures": []}
+    def process_gesture(self, gesture_result):
         if gesture_result and gesture_result.gestures:
+            self.frame_info["gestures"] = []
             for gesture in gesture_result.gestures:
                 gesture_info = {
                     "categoryName": gesture[0].category_name,
                     "score": float(gesture[0].score),
                     "index": int(gesture[0].index)
                 }
-                frame_info["gestures"].append(gesture_info)
-        self.data["frameData"].append(frame_info) 
+                self.frame_info["gestures"].append(gesture_info)
 
-    def process_pose(self, pose_result, frame_num):
-        frame_info = {"frame": frame_num, "pose": []}
+    def process_pose(self, pose_result):
         if pose_result and pose_result.pose_landmarks:
+            self.frame_info["pose"] = []
             for pose_landmarks in pose_result.pose_landmarks:
                 pose_info = {
                     "landmarks": [
                         {"x": lm.x, "y": lm.y, "z": lm.z} for lm in pose_landmarks
                     ]
                 }
-                frame_info["pose"].append(pose_info)
-        self.data["frameData"].append(frame_info)
+                self.frame_info["pose"].append(pose_info)
 
+    def process_frame(self, frame_num, hand_result, face_result, gesture_result, pose_result):
+        self.frame_info = {"frame": frame_num}
+        if hand_result and hand_result.hand_landmarks:
+            self.process_hands(hand_result)
+        if face_result and face_result.face_landmarks:
+            self.process_face(face_result)
+        if gesture_result and gesture_result.gestures:
+            self.process_gesture(gesture_result)
+        if pose_result and pose_result.pose_landmarks:
+            self.process_pose(pose_result)
+        
+        self.data["frameData"].append(self.frame_info)
 
     def save(self, filename):
         with open(filename, 'w') as f:

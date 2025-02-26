@@ -42,7 +42,7 @@ base_line = [5, 9, 13, 17]
 
 # Main func
 def main():
-    data = load_json('skilsmisse')
+    data = load_json('liveFeed')
     landmark_trajectories = process_landmarks(data)
     display_dynamic(landmark_trajectories, data)
     
@@ -53,26 +53,110 @@ def load_json(file_name):
         data = json.load(f)
     return data
 
+# Pose landmark connections for visualization
+pose_connections = [
+    # Face
+    [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8],
+    # Body
+    [9, 10],  # Mouth
+    [11, 12],  # Shoulders
+    [23, 24],  # Hips
+    [11, 23], [12, 24],  # Hips to legs
+    # Arms
+    # [9, 11], [10, 12],  # Torso sides
+    [11, 13], [13, 15], [15, 17], [17, 19], [19, 21],  # Left arm and hand
+    [12, 14], [14, 16], [16, 18], [18, 20], [20, 22],  # Right arm and hand
+    # Legs
+    # [23, 25], [25, 27], [27, 29], [29, 31],  # Left leg
+    # [24, 26], [26, 28], [28, 30], [30, 32]   # Right leg
+]
 
-# Process landmarks for display functions
+# Colors for pose visualization
+pose_color = "cyan"
+
+def calculate_face_center(pose_landmarks):
+    # Use nose point (index 0) as face center
+    if pose_landmarks and len(pose_landmarks) > 0:
+        return {
+            "x": pose_landmarks[0]["x"],
+            "y": pose_landmarks[0]["y"],
+            "z": pose_landmarks[0]["z"]
+        }
+    return None
+
 def process_landmarks(data):
     landmark_trajectories = {
         "Left": {},
         "Right": {}
     }
     length = data["total_frame_count"]
+    
+    # Scale factor to match hand depth with pose depth
+    # You may need to adjust this value based on your data
+    hand_depth_scale = 5.0
+    
     for frame in data["frameData"]:
+        face_center = None
+        if "pose" in frame and frame["pose"]:
+            pose_landmarks = frame["pose"][0]["landmarks"]
+            face_center = calculate_face_center(pose_landmarks)
+            
+            # Process pose landmarks relative to face center
+            if face_center:
+                for i, landmark in enumerate(pose_landmarks):
+                    landmark["x"] -= face_center["x"]
+                    landmark["y"] -= face_center["y"]
+                    landmark["z"] -= face_center["z"]
+        
+        # Get pose wrist positions
+        left_wrist_pos = None
+        right_wrist_pos = None
+        
+        if "pose" in frame and frame["pose"]:
+            pose_landmarks = frame["pose"][0]["landmarks"]
+            left_wrist_pos = pose_landmarks[15] if len(pose_landmarks) > 15 else None
+            right_wrist_pos = pose_landmarks[16] if len(pose_landmarks) > 16 else None
+        
         if "hands" not in frame:
             continue
+            
         for hand in frame["hands"]:
             hand_marks = hand["landmarks"]
             hand_key = hand["handedness"]
-            for i, landmark in enumerate(hand_marks):
-                if i not in landmark_trajectories[hand_key]:
-                    landmark_trajectories[hand_key][i] = {"x": [None] * length , "y": [None] * length, "z": [None] * length}
-                landmark_trajectories[hand_key][i]["x"][frame["frame"]] = landmark["x"]
-                landmark_trajectories[hand_key][i]["y"][frame["frame"]] = landmark["y"]
-                landmark_trajectories[hand_key][i]["z"][frame["frame"]] = landmark["z"]
+            
+            wrist_pos = left_wrist_pos if hand_key == "Left" else right_wrist_pos
+            
+            if wrist_pos and face_center:
+                # Scale the z-coordinates of hand landmarks
+                for mark in hand_marks:
+                    mark["z"] *= hand_depth_scale
+                
+                # Calculate offset between hand wrist and pose wrist
+                offset_x = wrist_pos["x"] - (hand_marks[0]["x"] - face_center["x"])
+                offset_y = wrist_pos["y"] - (hand_marks[0]["y"] - face_center["y"])
+                offset_z = wrist_pos["z"] - (hand_marks[0]["z"] - face_center["z"])
+                
+                for i, landmark in enumerate(hand_marks):
+                    if i not in landmark_trajectories[hand_key]:
+                        landmark_trajectories[hand_key][i] = {"x": [None] * length, "y": [None] * length, "z": [None] * length}
+                    
+                    landmark_trajectories[hand_key][i]["x"][frame["frame"]] = landmark["x"] - face_center["x"] + offset_x
+                    landmark_trajectories[hand_key][i]["y"][frame["frame"]] = landmark["y"] - face_center["y"] + offset_y
+                    landmark_trajectories[hand_key][i]["z"][frame["frame"]] = landmark["z"] - face_center["z"] + offset_z
+            else:
+                # If no pose wrist position or face center, store centered coordinates
+                for i, landmark in enumerate(hand_marks):
+                    if i not in landmark_trajectories[hand_key]:
+                        landmark_trajectories[hand_key][i] = {"x": [None] * length, "y": [None] * length, "z": [None] * length}
+                    
+                    # Center coordinates relative to face center if available
+                    x_offset = face_center["x"] if face_center else 0
+                    y_offset = face_center["y"] if face_center else 0
+                    z_offset = face_center["z"] if face_center else 0
+                    
+                    landmark_trajectories[hand_key][i]["x"][frame["frame"]] = landmark["x"] - x_offset
+                    landmark_trajectories[hand_key][i]["y"][frame["frame"]] = landmark["y"] - y_offset
+                    landmark_trajectories[hand_key][i]["z"][frame["frame"]] = landmark["z"] - z_offset
                 
     return landmark_trajectories
 
@@ -155,11 +239,6 @@ def display_dynamic(landmark_trajectories, data, interval=50):
             if any(x is not None for x in traj["z"]))
         )
 
-    margin = 0.1  # 10% margin
-    ax.set_xlim(x_min - margin, x_max + margin)
-    ax.set_ylim(y_min - margin, y_max + margin)
-    ax.set_zlim(z_min - margin, z_max + margin)
-
     # # Initialize line objects for each landmark (left and right hands)
     lines_left = {i: ax.plot([], [], [], color=landmark_colors[i], linewidth=1)[0] for i in landmark_trajectories["Left"]}
     lines_right = {i: ax.plot([], [], [], color=landmark_colors[i], linewidth=1)[0] for i in landmark_trajectories["Right"]}
@@ -180,6 +259,42 @@ def display_dynamic(landmark_trajectories, data, interval=50):
     start_points_left = {i: ax.scatter([], [], [], color=landmark_colors[i], s=50, zorder=5) for i in landmark_trajectories["Left"]}
     start_points_right = {i: ax.scatter([], [], [], color=landmark_colors[i], s=50, zorder=5) for i in landmark_trajectories["Right"]}
 
+        # Initialize pose lines
+    pose_lines = {tuple(conn): ax.plot([], [], [], color=pose_color, linewidth=2)[0] 
+                 for conn in pose_connections}
+    # pose_points = ax.scatter([], [], [], color=pose_color, s=50, zorder=5)
+
+    # Modify the update function to include pose visualization
+    def update(frame):
+        # Keep existing hand visualization code
+        
+        # Add pose visualization
+        frame_data = next((f for f in data["frameData"] if f["frame"] == frame), None)
+        if frame_data and "pose" in frame_data and frame_data["pose"]:
+            pose_landmarks = frame_data["pose"][0]["landmarks"]
+            
+            # Update pose connections
+            for conn in pose_connections:
+                start, end = conn
+                if start < len(pose_landmarks) and end < len(pose_landmarks):
+                    x_pose = [pose_landmarks[start]["x"], pose_landmarks[end]["x"]]
+                    y_pose = [pose_landmarks[start]["y"], pose_landmarks[end]["y"]]
+                    z_pose = [pose_landmarks[start]["z"], pose_landmarks[end]["z"]]
+                    pose_lines[tuple(conn)].set_data(x_pose, y_pose)
+                    pose_lines[tuple(conn)].set_3d_properties(z_pose)
+        else:
+            # Clear pose visualization if no data
+            for line in pose_lines.values():
+                line.set_data([], [])
+                line.set_3d_properties([])
+
+        return (list(lines_left.values()) + list(lines_right.values()) + 
+                list(finger_lines_left.values()) + list(finger_lines_right.values()) + 
+                list(wrist_lines_left.values()) + list(wrist_lines_right.values()) + 
+                list(start_points_left.values()) + list(start_points_right.values()) + 
+                [base_line_plot_left, base_line_plot_right] + 
+                list(pose_lines.values()))
+    
     ax.set_xlabel("X Coordinate")
     ax.set_ylabel("Y Coordinate")
     ax.set_zlabel("Z Coordinate")
@@ -188,6 +303,13 @@ def display_dynamic(landmark_trajectories, data, interval=50):
     # Set the camera angle to resemble the video perspective
     ax.view_init(elev=90, azim=90)  # Set elevation and azimuthal angles here
     ax.dist = 8  # Set distance from the viewer to the plot
+
+    # Adjust axis limits to be symmetric around (0,0,0)
+    max_range = max(abs(x_max), abs(x_min), abs(y_max), abs(y_min), abs(z_max), abs(z_min))
+    margin = max_range * 0.1  # 10% margin
+    ax.set_xlim(-max_range - margin, max_range + margin)
+    ax.set_ylim(-max_range - margin, max_range + margin)
+    ax.set_zlim(-max_range - margin, max_range + margin)
 
     max_frames = data["total_frame_count"]
     
@@ -288,8 +410,38 @@ def display_dynamic(landmark_trajectories, data, interval=50):
             base_line_plot_right.set_data(x_base_right, y_base_right)
             base_line_plot_right.set_3d_properties(z_base_right)
 
-        return list(lines_left.values()) + list(lines_right.values()) + list(finger_lines_left.values()) + list(finger_lines_right.values()) + list(wrist_lines_left.values()) + list(wrist_lines_right.values()) + list(start_points_left.values()) + list(start_points_right.values()) + [base_line_plot_left] + [base_line_plot_right]
+        # Add pose visualization
+        frame_data = next((f for f in data["frameData"] if f["frame"] == frame), None)
+        if frame_data and "pose" in frame_data and frame_data["pose"]:
+            pose_landmarks = frame_data["pose"][0]["landmarks"]
+            
+            # Update pose connections
+            for conn in pose_connections:
+                start, end = conn
+                if start < len(pose_landmarks) and end < len(pose_landmarks):
+                    x_pose = [pose_landmarks[start]["x"], pose_landmarks[end]["x"]]
+                    y_pose = [pose_landmarks[start]["y"], pose_landmarks[end]["y"]]
+                    z_pose = [pose_landmarks[start]["z"], pose_landmarks[end]["z"]]
+                    pose_lines[tuple(conn)].set_data(x_pose, y_pose)
+                    pose_lines[tuple(conn)].set_3d_properties(z_pose)
+            
+            # Update pose points
+            x_points = [lm["x"] for lm in pose_landmarks]
+            y_points = [lm["y"] for lm in pose_landmarks]
+            z_points = [lm["z"] for lm in pose_landmarks]
+        else:
+            # Clear pose visualization if no data
+            for line in pose_lines.values():
+                line.set_data([], [])
+                line.set_3d_properties([])
 
+        return (list(lines_left.values()) + list(lines_right.values()) + 
+                list(finger_lines_left.values()) + list(finger_lines_right.values()) + 
+                list(wrist_lines_left.values()) + list(wrist_lines_right.values()) + 
+                list(start_points_left.values()) + list(start_points_right.values()) + 
+                [base_line_plot_left, base_line_plot_right] + 
+                list(pose_lines.values()))
+    
     ani = animation.FuncAnimation(fig, update, frames=max_frames, interval=interval, blit=True)
 
     plt.show()

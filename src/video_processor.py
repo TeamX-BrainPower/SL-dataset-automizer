@@ -71,21 +71,22 @@ class VideoProcessor:
             timestamp_ms = int(cv2.getTickCount() / cv2.getTickFrequency() * 1000)
 
             # Detect landmarks
-            face_result = self.face_landmarker.detect_for_video(mp_image, timestamp_ms)
+            # face_result = self.face_landmarker.detect_for_video(mp_image, timestamp_ms)
             hand_result = self.hand_landmarker.detect_for_video(mp_image, timestamp_ms)
             gesture_result = self.gesture_recognizer.recognize_for_video(mp_image, timestamp_ms)
             pose_result = self.pose_landmarker.detect_for_video(mp_image, timestamp_ms)
 
             # Update processors
             for processor in processors:
-                processor.process_hands(hand_result, frame_count)
-                processor.process_face(face_result, frame_count)
-                processor.process_gesture(gesture_result, frame_count)
-                processor.process_pose(pose_result, frame_count)
+                # processor.process_hands(hand_result, frame_count)
+                # # processor.process_face(face_result, frame_count)
+                # processor.process_gesture(gesture_result, frame_count)
+                # processor.process_pose(pose_result, frame_count)
+                processor.process_frame(frame_count, hand_result, None, gesture_result, pose_result)
 
             # Display output if configured
             if self.config.display_output:
-                self._display_frame(mp_image, face_result, hand_result, gesture_result, pose_result, prev_time)
+                self._display_frame(mp_image, None, hand_result, gesture_result, pose_result, prev_time)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
 
@@ -105,7 +106,8 @@ class VideoProcessor:
         annotated_image = cv2.cvtColor(mp_image.numpy_view(), cv2.COLOR_RGB2BGR)
         annotated_image = LandmarkDrawer.draw_landmarks(
             annotated_image,
-            face_result,
+            # face_result,
+            None,
             hand_result, 
             gesture_result, 
             pose_result
