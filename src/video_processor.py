@@ -26,7 +26,7 @@ class VideoProcessor:
             json_processor = JSONProcessor(
                 word,
                 int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-                int(cap.get(cv2.CAP_PROP_FPS))
+                int(cap.get(cv2.CAP_PROP_FPS)),
             )
             processors.append(json_processor)
 
@@ -36,21 +36,18 @@ class VideoProcessor:
 
         # Process frames
         with LandmarkerFactory.create_landmarkers(self.config) as (
-                self.face_landmarker,
-                self.hand_landmarker
+            self.face_landmarker,
+            self.hand_landmarker,
+            _,
         ):
             self._process_frames(cap, processors)
 
         # Save outputs
         Path(self.config.output_dir).mkdir(exist_ok=True)
         if self.config.save_json:
-            json_processor.save(
-                f"{self.config.output_dir}/{word}.json"
-            )
+            json_processor.save(f"{self.config.output_dir}/{word}.json")
         if self.config.save_tfrecord:
-            tfrecord_processor.save(
-                f"{self.config.output_dir}/{word}.tfrecord"
-            )
+            tfrecord_processor.save(f"{self.config.output_dir}/{word}.tfrecord")
 
     def _process_frames(self, cap, processors):
         frame_count = 0
@@ -76,7 +73,7 @@ class VideoProcessor:
             # Display output if configured
             if self.config.display_output:
                 self._display_frame(mp_image, face_result, hand_result, prev_time)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
 
             frame_count += 1
@@ -94,21 +91,19 @@ class VideoProcessor:
     def _display_frame(self, mp_image, face_result, hand_result, prev_time):
         annotated_image = cv2.cvtColor(mp_image.numpy_view(), cv2.COLOR_RGB2BGR)
         annotated_image = LandmarkDrawer.draw_landmarks(
-            annotated_image,
-            face_result,
-            hand_result
+            annotated_image, face_result, hand_result
         )
 
         # Add FPS counter
         fps = 1 / (time.time() - prev_time)
         cv2.putText(
             annotated_image,
-            f'FPS: {int(fps)}',
+            f"FPS: {int(fps)}",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             (255, 0, 0),
-            2
+            2,
         )
 
-        cv2.imshow('Landmarker', annotated_image)
+        cv2.imshow("Landmarker", annotated_image)
