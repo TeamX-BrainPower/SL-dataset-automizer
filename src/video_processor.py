@@ -4,7 +4,7 @@ import mediapipe as mp
 from pathlib import Path
 
 from config import ProcessingConfig
-from data.processors import JSONProcessor, TFRecordProcessor
+# from data.processors import JSONProcessor, TFRecordProcessor
 from models.landmarker import LandmarkerFactory
 from visualization.drawer import LandmarkDrawer
 
@@ -15,14 +15,30 @@ class VideoProcessor:
         self.face_landmarker = None
         self.hand_landmarker = None
 
-    def process_video(self, video_path: str, word: str):
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise ValueError("Could not open video stream")
+    def process_video(self, video_path: str, word: str, start_frame: int = None, end_frame: int = None):
+
+        if "youtube" in video_path:
+            import pafy
+            try:
+                video = pafy.new(video_path,ydl_opts={'nocheckcertificate': True})
+                best = video.getbest()
+                video_path = best.url
+            except Exception as e:
+                print(f"Error processing video: {e}")
+                return
+            cap = cv2.VideoCapture(video_path)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            if not cap.isOpened():
+                raise ValueError("Could not open video stream: " + video_path)
+        else:
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                raise ValueError("Could not open video stream: " + video_path)
 
         # Initialize processors
         processors = []
         if self.config.save_json:
+            from data.processors import JSONProcessor
             json_processor = JSONProcessor(
                 word,
                 int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
@@ -31,6 +47,7 @@ class VideoProcessor:
             processors.append(json_processor)
 
         if self.config.save_tfrecord:
+            from data.processors import TFRecordProcessor
             tfrecord_processor = TFRecordProcessor(word)
             processors.append(tfrecord_processor)
 
@@ -39,7 +56,7 @@ class VideoProcessor:
                 self.face_landmarker,
                 self.hand_landmarker
         ):
-            self._process_frames(cap, processors)
+            self._process_frames(cap, processors, end_frame)
 
         # Save outputs
         Path(self.config.output_dir).mkdir(exist_ok=True)
@@ -52,13 +69,16 @@ class VideoProcessor:
                 f"{self.config.output_dir}/{word}.tfrecord"
             )
 
-    def _process_frames(self, cap, processors):
+    def _process_frames(self, cap, processors, end_frame=None):
         frame_count = 0
         prev_time = time.time()
 
         while cap.isOpened():
             ret, frame = cap.read()
-            if not ret:
+            current_frame = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+            
+            # Check if we've reached the end frame or the video has ended
+            if not ret or (end_frame is not None and current_frame >= end_frame):
                 break
 
             # Process frame

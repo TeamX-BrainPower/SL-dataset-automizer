@@ -31,6 +31,11 @@ This project automates the processing of sign language videos to extract facial 
 pip install -r requirements.txt
 ```
 
+## Patching python packages
+
+The package "pafy" is used to process YouTube videos, but it uses an old YouTube interface. 
+In the pafy files, change every instance of `import youtube-dl` with `import yt-dlp as youtube-dl`
+
 ## Usage
 1. **Configure the Project:**
 

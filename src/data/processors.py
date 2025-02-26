@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import json
-import tensorflow as tf
+
 
 
 class DataProcessor(ABC):
@@ -45,6 +45,7 @@ class JSONProcessor(DataProcessor):
 
 
 class TFRecordProcessor(DataProcessor):
+    import tensorflow as tf
     def __init__(self, word):
         self.word = word
         self.features = []
