@@ -76,6 +76,8 @@ class LiveProsessor:
                 if timestamp <= last_timestamp:
                     timestamp = last_timestamp + 1
 
+                print("fps:", 1000 / (timestamp - last_timestamp))
+
                 last_timestamp = timestamp
 
                 results, empty_frame = self.process_frame(frame, timestamp)
