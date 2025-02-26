@@ -22,6 +22,14 @@ class MaxSizeDict(OrderedDict):
 def main():
     frame_data: dict = MaxSizeDict(60)
 
+    def total_process():
+        a = frame_data[next(reversed(frame_data))]
+        print(a)
+        # if "hand" in last_data and "pose" in last_data:
+        #     print("both processed completed")
+
+        return
+
     def face_callback(result, _image, timestamp_ms):
         # if timestamp_ms in frame_data:
         #     frame_data[timestamp_ms]["face_landmarks"] = result
@@ -30,41 +38,46 @@ def main():
         return
 
     def hand_callback(result, _image, timestamp_ms):
-        if result.hand_landmarks:
-            if timestamp_ms not in frame_data:
-                frame_data[timestamp_ms] = [[-1, -1, -1]] * 49
+        if timestamp_ms not in frame_data:
+            frame_data[timestamp_ms] = {"result": [[-1, -1, -1]] * 49}
 
+        if result.hand_landmarks:
             for hand_landmarks, handedness in zip(
                 result.hand_landmarks, result.handedness
             ):
                 hand = handedness[0].category_name.lower()
                 if hand == "right":
-                    frame_data[timestamp_ms][7:28] = [
+                    frame_data[timestamp_ms]["result"][7:28] = [
                         [landmark.x, landmark.y, landmark.z]
                         for landmark in hand_landmarks
                     ]
                 elif hand == "left":
-                    frame_data[timestamp_ms][28:49] = [
+                    frame_data[timestamp_ms]["result"][28:49] = [
                         [landmark.x, landmark.y, landmark.z]
                         for landmark in hand_landmarks
                     ]
+        frame_data[timestamp_ms]["hand"] = True
+        total_process()
 
     def pose_callback(result, _image, timestamp_ms):
-        if result.pose_landmarks:
-            if timestamp_ms not in frame_data:
-                frame_data[timestamp_ms] = [[-1, -1, -1]] * 49
+        if timestamp_ms not in frame_data:
+            frame_data[timestamp_ms] = {"result": [[-1, -1, -1]] * 49}
 
+        if result.pose_landmarks:
             poses = [
                 [pose.x, pose.y, pose.z]
                 for _, pose in enumerate(result.pose_landmarks[0])
             ]
-            frame_data[timestamp_ms][0] = poses[0]
-            frame_data[timestamp_ms][1] = poses[12]
-            frame_data[timestamp_ms][2] = poses[11]
-            frame_data[timestamp_ms][3] = poses[14]
-            frame_data[timestamp_ms][4] = poses[13]
-            frame_data[timestamp_ms][5] = poses[16]
-            frame_data[timestamp_ms][6] = poses[15]
+            frame_data[timestamp_ms]["result"][0] = poses[0]
+            frame_data[timestamp_ms]["result"][1] = poses[12]
+            frame_data[timestamp_ms]["result"][2] = poses[11]
+            frame_data[timestamp_ms]["result"][3] = poses[14]
+            frame_data[timestamp_ms]["result"][4] = poses[13]
+            frame_data[timestamp_ms]["result"][5] = poses[16]
+            frame_data[timestamp_ms]["result"][6] = poses[15]
+
+        frame_data[timestamp_ms]["pose"] = True
+        total_process()
 
     config = ProcessingConfig(
         display_output=False,

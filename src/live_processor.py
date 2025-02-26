@@ -30,15 +30,6 @@ class LiveProsessor:
         return
 
     def process_frame(self, frame: cv.typing.MatLike, timestamp: int):
-        # 0 is nose
-        # 1 is right shoulder
-        # 2 is left shoulder
-        # 3 is right elbow
-        # 4 is left elbow
-        # 5 is right wrist
-        # 6 is left wrist
-        # 7 - 27 is right hand
-        # 28 - 48 is left hand
         processed_frame = cv.flip(frame, 1)
         processed_frame = cv.cvtColor(processed_frame, cv.COLOR_BGR2RGB)
 
