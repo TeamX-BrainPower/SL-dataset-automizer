@@ -50,8 +50,8 @@ pose_connections = [
     [11, 23], [12, 24],  # Shoulders to hips
     # Arms
     # [9, 11], [10, 12],  # Torso sides
-    [11, 13], [13, 15], [15, 17], [17, 19], [19, 21],  # Left arm and hand
-    [12, 14], [14, 16], [16, 18], [18, 20], [20, 22],  # Right arm and hand
+    [11, 13], [13, 15], #[15, 17], [17, 19], [19, 21],  # Left arm and hand
+    [12, 14], [14, 16], #[16, 18], [18, 20], [20, 22],  # Right arm and hand
     # Legs
     # [23, 25], [25, 27], [27, 29], [29, 31],  # Left leg
     # [24, 26], [26, 28], [28, 30], [30, 32]   # Right leg
@@ -63,7 +63,7 @@ pose_color = "cyan"
 
 # Main func
 def main():
-    data = load_json('skilsmisse')
+    data = load_json('adobe-photoshop')
     landmark_trajectories = process_landmarks(data)
     display_dynamic(landmark_trajectories, data)
     
