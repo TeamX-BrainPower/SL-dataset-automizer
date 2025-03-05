@@ -13,7 +13,7 @@ def main():
     webprocessor = VideoProcessor(config)
 
     # Process webcam stream
-    webprocessor.process_video()
+    webprocessor.process_video(0, "livefeed")
 
     # Process a video file
     word = "skilsmisse"

@@ -63,7 +63,7 @@ pose_color = "cyan"
 
 # Main func
 def main():
-    data = load_json('adobe-photoshop')
+    data = load_json('livefeed')
     landmark_trajectories = process_landmarks(data)
     display_dynamic(landmark_trajectories, data)
     
