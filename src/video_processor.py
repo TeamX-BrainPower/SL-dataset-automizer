@@ -98,8 +98,8 @@ class VideoProcessor:
             cv2.destroyAllWindows()
 
     def _prepare_frame(self, frame):
-        flipped_frame = cv2.flip(frame, 1)
-        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+        # flipped_frame = cv2.flip(frame, 1)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
     def _display_frame(self, mp_image, face_result, hand_result, gesture_result, pose_result,  prev_time):
