@@ -11,7 +11,7 @@ class MLModel:
     def __init__(self, num_classes: int) -> None:
         self.model = keras.models.Sequential(
             [
-                keras.layers.Input((30, 46, 1, 3)),
+                keras.layers.Input((30, 44, 1, 3)),
                 keras.layers.ConvLSTM2D(
                     filters=32,
                     kernel_size=(3, 1),
@@ -37,7 +37,7 @@ class MLModel:
                 ),
                 keras.layers.BatchNormalization(),
                 keras.layers.Flatten(),
-                keras.layers.Dense(256, activation="relu"),
+                keras.layers.Dense(128, activation="relu"),
                 keras.layers.Dropout(0.3),
                 keras.layers.Dense(num_classes, activation="softmax"),
             ]
@@ -46,7 +46,8 @@ class MLModel:
         self.model.summary()
         optimizer = keras.optimizers.Adam(learning_rate=0.001)
         loss = keras.losses.SparseCategoricalCrossentropy(from_logits=False)
-        self.model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
+        self.model.compile(optimizer=optimizer, loss=loss,
+                           metrics=["accuracy"])
         return
 
     def train_model(
@@ -62,54 +63,80 @@ class MLModel:
 
         # list with index 0 being X and 1 being Y
         all_data = []
+        x = []
+        y = []
 
         for word in data:
             sample_label = word["word"]
             for sample in word["samples"]:
-                sample_data = np.empty((30, 46, 3))
+                sample_data = np.empty((30, 44, 3))
                 sample_data[:] = np.nan
 
-                for idx, value in enumerate(sample):
+                for idx, value in enumerate(sample[:30]):
                     pose = value.get("pose", None)
                     hands = value.get("hands", None)
 
                     if pose:
-                        sample_data[idx, 0:6] = np.array(
-                            [[p["x"], p["y"], p["z"]] for p in pose["landmarks"]]
+                        landmarks = pose[0]["landmarks"]
+                        right_shoulder = landmarks[12]
+                        left_shoulder = landmarks[11]
+                        right_elbow = landmarks[14]
+                        left_elbow = landmarks[13]
+                        sample_data[idx, 0:4] = np.array(
+                            [
+                                [
+                                    right_shoulder["x"],
+                                    right_shoulder["y"],
+                                    right_shoulder["z"],
+                                ],
+                                [
+                                    left_shoulder["x"],
+                                    left_shoulder["y"],
+                                    left_shoulder["z"],
+                                ],
+                                [right_elbow["x"], right_elbow["y"],
+                                    right_elbow["z"]],
+                                [left_elbow["x"], left_elbow["y"], left_elbow["z"]],
+                            ]
                         )
 
                     if hands:
-                        pass
+                        for hand in hands:
+                            landmarks = hand["landmarks"][1:]
+                            points = np.array(
+                                [[p["x"], p["y"], p["z"]] for p in landmarks]
+                            )
+                            if hand["handedness"] == "Right":
+                                sample_data[idx, 4:24] = points
+                            else:
+                                sample_data[idx, 24:] = points
                     pass
-                # get the positions
 
-                all_data.append((sample_data, sample_label))
+                x.append(sample_data)
+                y.append(sample_label)
 
-        all_data = np.array(all_data)
-
-        x = all_data[:, 0]
-        y = all_data[:, 1]
+        x = np.array(x)
+        x = x.reshape((x.shape[0], 30, 44, 1, 3))
+        y = np.array(y)
 
         label_encoder = LabelEncoder()
-        y_encoded = label_encoder.fit_transform(y)
-        y_one_hot = keras.utils.to_categorical(y_encoded)
+        y_encoded = np.array(label_encoder.fit_transform(y))
 
-        print("data shape:", x.shape, y_one_hot.shape)
+        print("data shape:", x.shape, y_encoded.shape)
 
-        X_train, X_test, Y_train, Y_test = train_test_split(
-            x, y_one_hot, test_size=test_size, stratify=y_encoded
-        )
-
-        X_train, X_val, Y_train, Y_val = train_test_split(
-            X_train, Y_train, test_size=test_size, stratify=y_encoded
-        )
-
+        # X_train, X_test, Y_train, Y_test = train_test_split(
+        #     x, y_one_hot, test_size=test_size, stratify=y_encoded
+        # )
+        #
+        # X_train, X_val, Y_train, Y_val = train_test_split(
+        #     X_train, Y_train, test_size=test_size, stratify=y_encoded
+        # )
+        #
         self.model.fit(
-            X_train,
-            Y_train,
+            x,
+            y_encoded,
             epochs=epochs,
             batch_size=batchsize,
-            validation_data=(X_val, Y_val),
         )
 
         return
@@ -126,5 +153,9 @@ class MLModel:
 
 
 if __name__ == "__main__":
-    model = MLModel(3)
+    import json
 
+    model = MLModel(2)
+    with open("data.json", "r+") as f:
+        data = json.load(f)
+    model.train_model(data)
