@@ -42,7 +42,7 @@ base_line = [5, 9, 13, 17]
 
 # Main func
 def main():
-    data = load_json('liveFeed')
+    data = load_json('skilsmisse')
     landmark_trajectories = process_landmarks(data)
     display_dynamic(landmark_trajectories, data)
     
