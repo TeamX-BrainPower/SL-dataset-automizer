@@ -215,6 +215,8 @@ class JSONProcessor(DataProcessor):
         
         self.data["frameData"].append(self.frame_info)
 
+        self.data["total_frame_count"] = frame_num + 1
+
     def save(self, filename):
         with open(filename, 'w') as f:
             json.dump(self.data, f, indent=4)
