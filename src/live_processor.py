@@ -3,140 +3,29 @@ from mediapipe.tasks.python.vision import (
     PoseLandmarker,
     HandLandmarker,
 )
-from mediapipe import Image, ImageFormat
 from config import ProcessingConfig
 from models.landmarker import LandmarkerFactory
 import cv2 as cv
-import time
-import numpy as np
-from numpy.typing import NDArray
+from time import time
 
-from subscriber import Subscriber
+from processor import Processor
 
 
-class LiveProsessor:
+class LiveProsessor(Processor):
     pose_landmarker: PoseLandmarker | None  # pyright: ignore
     hand_landmarker: HandLandmarker | None  # pyright: ignore
     face_landmarker: FaceLandmarker | None  # pyright: ignore
     cap: cv.VideoCapture
     config: ProcessingConfig
-    subscribers: list[Subscriber]
 
     def __init__(self, config: ProcessingConfig) -> None:
-        self.pose_landmarker = None
-        self.hand_landmarker = None
-        self.face_landmarker = None
-        self.config = config
-
-        self.subscribers = []
-
+        super().__init__(config)
         self.cap = cv.VideoCapture(config.cap_device)
         self.cap.set(cv.CAP_PROP_FRAME_WIDTH, config.cap_width)
         self.cap.set(cv.CAP_PROP_FRAME_HEIGHT, config.cap_height)
+        self.cap.set(cv.CAP_PROP_FPS, config.fps_cap)
 
         return
-
-    def add_subscriber(self, subscriber: Subscriber):
-        self.subscribers.append(subscriber)
-
-    def process_frame(
-        self, frame: cv.typing.MatLike, timestamp: int, world_coords: bool = False
-    ) -> tuple[NDArray, bool, bool]:
-        processed_frame = cv.flip(frame, 1)
-        processed_frame = cv.cvtColor(processed_frame, cv.COLOR_BGR2RGB)
-
-        mp_image = Image(image_format=ImageFormat.SRGB, data=frame)
-
-        hand_result = self.hand_landmarker.detect_for_video(  # pyright: ignore
-            mp_image, timestamp
-        )
-        pose_result = self.pose_landmarker.detect_for_video(  # pyright: ignore
-            mp_image, timestamp
-        )
-
-        results = [[-1, -1, -1]] * 49
-
-        hands = False
-        pose = False
-
-        if not world_coords:
-            if pose_result.pose_landmarks:
-                pose = True
-                poses = [
-                    [pose.x, pose.y, pose.z]
-                    for _, pose in enumerate(pose_result.pose_landmarks[0])
-                ]
-                results[0] = poses[0]
-                results[1] = poses[12]
-                results[2] = poses[11]
-                results[3] = poses[14]
-                results[4] = poses[13]
-                results[5] = poses[16]
-                results[6] = poses[15]
-
-            if hand_result.hand_landmarks:
-                hands = True
-                for hand_landmarks, handedness in zip(
-                    hand_result.hand_landmarks, hand_result.handedness
-                ):
-                    hand = handedness[0].category_name.lower()
-                    if hand == "right":
-                        results[7:28] = [
-                            [landmark.x, landmark.y, landmark.z]
-                            for landmark in hand_landmarks
-                        ]
-                    elif hand == "left":
-                        results[28:49] = [
-                            [landmark.x, landmark.y, landmark.z]
-                            for landmark in hand_landmarks
-                        ]
-
-        else:
-            if pose_result.pose_world_landmarks:
-                pose = True
-                poses = [
-                    [pose.x, pose.y, pose.z]
-                    for _, pose in enumerate(pose_result.pose_world_landmarks[0])
-                ]
-                results[0] = poses[0]
-                results[1] = poses[12]
-                results[2] = poses[11]
-                results[3] = poses[14]
-                results[4] = poses[13]
-                results[5] = poses[16]
-                results[6] = poses[15]
-
-            if hand_result.hand_world_landmarks:
-                hands = True
-                for hand_landmarks, handedness in zip(
-                    hand_result.hand_world_landmarks, hand_result.handedness
-                ):
-                    hand = handedness[0].category_name.lower()
-                    wrist = np.array(
-                        [hand_landmarks[0].x, hand_landmarks[0].y, hand_landmarks[0].z]
-                    )
-                    coords = np.array(
-                        [
-                            [landmark.x, landmark.y, landmark.z]
-                            for landmark in hand_landmarks
-                        ]
-                    )
-                    coords -= wrist
-
-                    if hand == "right":
-                        results[7:28] = coords
-
-                    elif hand == "left":
-                        results[28:49] = coords
-
-        return_arr = np.array(results)
-
-        # compensate for the wrist
-        if hands:
-            return_arr[7:28] += return_arr[5]
-            return_arr[28:49] += return_arr[6]
-
-        return return_arr, hands, pose  # results_arr, empty_frame
 
     def process(self) -> None:
         with LandmarkerFactory.create_landmarkers(self.config) as (
@@ -144,7 +33,17 @@ class LiveProsessor:
             self.hand_landmarker,
             self.pose_landmarker,
         ):
-            last_timestamp = 0
+            last_timestamp = time()
+            recording_index = 0
+            recording_output = cv.VideoWriter(
+                f"recording_{recording_index}.mp4",
+                cv.VideoWriter_fourcc(*"mp4v"),  # pyright: ignore
+                10,
+                (self.config.cap_width, self.config.cap_height),
+            )
+
+            cv.namedWindow("Test", cv.WINDOW_AUTOSIZE)
+
             while True:
                 ret, frame = self.cap.read()
                 show_frame = frame.copy()
@@ -156,29 +55,48 @@ class LiveProsessor:
 
                 if key == 27:
                     break
+                elif key == ord(" "):
+                    if not self.config.recording:
+                        print("Starting recording")
+                        self.config.recording = True
+                    else:
+                        print("finished recording")
+                        self.config.recording = False
+                        recording_output.release()
+                        recording_index += 1
+                        recording_output = cv.VideoWriter(
+                            f"{self.config.output_dir}/recording_{recording_index}.mp4",
+                            cv.VideoWriter_fourcc(*"mp4v"),  # pyright: ignore
+                            10,
+                            (self.config.cap_width, self.config.cap_height),
+                        )
 
-                timestamp = int(time.time() * 1000)
+                timestamp = time()
+
+                print("fps:", 1 / (timestamp - last_timestamp))
+
                 if timestamp <= last_timestamp:
-                    timestamp = last_timestamp + 1
-
-                print("fps:", 1000 / (timestamp - last_timestamp))
+                    timestamp += 0.001
 
                 last_timestamp = timestamp
 
                 results, empty_hands, empty_pose = self.process_frame(
-                    frame, timestamp, True
+                    frame, timestamp, False
                 )
 
-                for sub in self.subscribers:
-                    sub.consume(results)
+                if self.config.pipeline:
+                    self.config.pipeline.process(results)
 
-                cv.flip(show_frame, 1)
-                # cv.imshow("Test", show_frame)
+                show_frame = cv.flip(show_frame, 1)
+                cv.imshow("Test", show_frame)
+                if self.config.recording:
+                    recording_output.write(show_frame)
 
                 if not empty_hands:
                     print("hands are empty")
 
                 if not empty_pose:
                     print("pose is empty")
-                # else:
-                #     print(results)
+            recording_output.release()
+            self.cap.release()
+            cv.destroyAllWindows()

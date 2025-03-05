@@ -21,11 +21,20 @@ class LandmarkerFactory:
         face_model_data = face_model_file.read()
         face_model_file.close()
 
+        hand_callback = None
+        pose_callback = None
+        face_callback = None
+
+        if config.vision_mode == vision.RunningMode.LIVE_STREAM:
+            hand_callback = config.hand_callback
+            pose_callback = config.pose_callback
+            face_callback = config.face_callback
+
         face_options = vision.FaceLandmarkerOptions(
             base_options=base_options(model_asset_buffer=face_model_data),
             running_mode=config.vision_mode,
             num_faces=config.num_faces,
-            result_callback=config.face_callback,
+            result_callback=face_callback,
         )
 
         hand_model_file = open(config.hand_model_path, "rb")
@@ -36,7 +45,7 @@ class LandmarkerFactory:
             base_options=base_options(model_asset_buffer=hand_model_data),
             running_mode=config.vision_mode,
             num_hands=config.num_hands,
-            result_callback=config.hand_callback,
+            result_callback=hand_callback,
         )
 
         pose_model_file = open(config.pose_model_path, "rb")
@@ -46,7 +55,7 @@ class LandmarkerFactory:
         pose_options = vision.PoseLandmarkerOptions(
             base_options=base_options(model_asset_buffer=pose_model_data),
             running_mode=config.vision_mode,
-            result_callback=config.pose_callback,
+            result_callback=pose_callback,
         )
 
         face_landmarker = vision.FaceLandmarker.create_from_options(face_options)

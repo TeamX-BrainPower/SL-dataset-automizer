@@ -1,109 +1,97 @@
-import cv2
-import time
-import mediapipe as mp
-from pathlib import Path
-
 from config import ProcessingConfig
-from data.processors import JSONProcessor, TFRecordProcessor
 from models.landmarker import LandmarkerFactory
-from visualization.drawer import LandmarkDrawer
+from processor import Processor
+import cv2 as cv
+from time import time, sleep
+import numpy as np
 
 
-class VideoProcessor:
-    def __init__(self, config: ProcessingConfig):
-        self.config = config
-        self.face_landmarker = None
-        self.hand_landmarker = None
+class VideoProcessor(Processor):
+    files: list[str]
+    headers: list[str]
 
-    def process_video(self, video_path: str, word: str):
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise ValueError("Could not open video stream")
+    def __init__(self, config: ProcessingConfig, files: list[str]) -> None:
+        super().__init__(config)
+        self.files = files
+        self.headers = ["timestamp"]
 
-        # Initialize processors
-        processors = []
-        if self.config.save_json:
-            json_processor = JSONProcessor(
-                word,
-                int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-                int(cap.get(cv2.CAP_PROP_FPS)),
-            )
-            processors.append(json_processor)
+        extra = []
 
-        if self.config.save_tfrecord:
-            tfrecord_processor = TFRecordProcessor(word)
-            processors.append(tfrecord_processor)
+        for pose in [
+            "nose",
+            "right_shoulder",
+            "left_shoulder",
+            "right_elbow",
+            "left_elbow",
+            "right_wrist",
+            "left_wrist",
+        ]:
+            for point in ["x", "y", "z"]:
+                extra.append(f"{pose}_{point}")
 
-        # Process frames
+        for hand in ["right", "left"]:
+            for i in range(21):
+                for point in ["x", "y", "z"]:
+                    extra.append(f"{hand}_finger_{i}_{point}")
+
+        self.headers += extra
+
+        self.headers += [f"vel_{point}" for point in extra]
+        self.headers += [f"acc_{point}" for point in extra]
+
+        self.headers += [f"distance_{i}" for i in range(27)]
+
+    def process(self) -> None:
         with LandmarkerFactory.create_landmarkers(self.config) as (
             self.face_landmarker,
             self.hand_landmarker,
-            _,
+            self.pose_landmarker,
         ):
-            self._process_frames(cap, processors)
+            for video_file in self.files:
+                cap = cv.VideoCapture(video_file)
+                cap.set(cv.CAP_PROP_FRAME_WIDTH, self.config.cap_width)
+                cap.set(cv.CAP_PROP_FRAME_HEIGHT, self.config.cap_height)
 
-        # Save outputs
-        Path(self.config.output_dir).mkdir(exist_ok=True)
-        if self.config.save_json:
-            json_processor.save(f"{self.config.output_dir}/{word}.json")
-        if self.config.save_tfrecord:
-            tfrecord_processor.save(f"{self.config.output_dir}/{word}.tfrecord")
+                if not cap.isOpened():
+                    print("Could not open file:", video_file)
+                    exit(1)
 
-    def _process_frames(self, cap, processors):
-        frame_count = 0
-        prev_time = time.time()
+                # fps = cap.get(cv.CAP_PROP_FPS)
+                # frame_rate = 1 / fps
+                print("Processing file:", video_file)
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+                output_data = None
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
 
-            # Process frame
-            mp_image = self._prepare_frame(frame)
-            timestamp_ms = int(cv2.getTickCount() / cv2.getTickFrequency() * 1000)
+                    timestamp = time()
 
-            # Detect landmarks
-            face_result = self.face_landmarker.detect_for_video(mp_image, timestamp_ms)
-            hand_result = self.hand_landmarker.detect_for_video(mp_image, timestamp_ms)
+                    results, empty_hands, empty_pose = self.process_frame(
+                        frame, timestamp, False
+                    )
 
-            # Update processors
-            for processor in processors:
-                processor.process_frame(hand_result, frame_count)
+                    if self.config.pipeline:
+                        output_data = self.config.pipeline.process(results)
+                        if isinstance(output_data, np.ndarray):
+                            print(output_data.shape)
+                    # elapsed_time = time() - timestamp
+                    # sleep_time = max(0, frame_rate - elapsed_time)
+                    # sleep(sleep_time)
 
-            # Display output if configured
-            if self.config.display_output:
-                self._display_frame(mp_image, face_result, hand_result, prev_time)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
+                if output_data is None:
+                    print("Could not get any data for:", video_file)
+                else:
+                    print("output data shape:", output_data.shape)
+                    file_path = (
+                        f"{self.config.output_dir}/" + f"{video_file.split('.')[0]}.txt"
+                    )
 
-            frame_count += 1
-            prev_time = time.time()
-
-        cap.release()
-        if self.config.display_output:
-            cv2.destroyAllWindows()
-
-    def _prepare_frame(self, frame):
-        flipped_frame = cv2.flip(frame, 1)
-        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
-        return mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-
-    def _display_frame(self, mp_image, face_result, hand_result, prev_time):
-        annotated_image = cv2.cvtColor(mp_image.numpy_view(), cv2.COLOR_RGB2BGR)
-        annotated_image = LandmarkDrawer.draw_landmarks(
-            annotated_image, face_result, hand_result
-        )
-
-        # Add FPS counter
-        fps = 1 / (time.time() - prev_time)
-        cv2.putText(
-            annotated_image,
-            f"FPS: {int(fps)}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (255, 0, 0),
-            2,
-        )
-
-        cv2.imshow("Landmarker", annotated_image)
+                    np.savetxt(
+                        file_path,
+                        output_data,
+                        header=",".join(self.headers),
+                        delimiter=",",
+                    )
+        return

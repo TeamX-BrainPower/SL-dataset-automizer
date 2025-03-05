@@ -1,6 +1,8 @@
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
 from mediapipe.tasks.python.vision import RunningMode
+
+from pipeline import PipelineManager
 
 
 @dataclass
@@ -18,6 +20,9 @@ class ProcessingConfig:
     cap_width: int = 960
     cap_height: int = 540
     vision_mode: RunningMode = RunningMode.VIDEO  # pyright: ignore
-    face_callback: Callable | None = None
-    hand_callback: Callable | None = None
-    pose_callback: Callable | None = None
+    face_callback: Optional[Callable] = None
+    hand_callback: Optional[Callable] = None
+    pose_callback: Optional[Callable] = None
+    pipeline: Optional[PipelineManager] = None
+    recording: bool = False
+    fps_cap: int = 30
