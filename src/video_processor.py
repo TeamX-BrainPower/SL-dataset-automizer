@@ -7,6 +7,7 @@ from config import ProcessingConfig
 from data.processors import JSONProcessor, TFRecordProcessor
 from models.landmarker import LandmarkerFactory
 from visualization.drawer import LandmarkDrawer
+from interpolation import TrajectoryProcessor
 
 
 class VideoProcessor:
@@ -46,12 +47,14 @@ class VideoProcessor:
         ):
             self._process_frames(cap, processors)
 
+
         # Save outputs
         Path(self.config.output_dir).mkdir(exist_ok=True)
         if self.config.save_json:
-            json_processor.save(
-                f"{self.config.output_dir}/{word}.json"
-            )
+            # Interpolate data and save it as JSON
+            interpolator = TrajectoryProcessor(word, json_processor.data, self.config)
+            interpolator.write_json()
+
         if self.config.save_tfrecord:
             tfrecord_processor.save(
                 f"{self.config.output_dir}/{word}.tfrecord"
