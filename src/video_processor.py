@@ -10,6 +10,7 @@ from config import ProcessingConfig
 from models.landmarker import LandmarkerFactory
 from visualization.drawer import LandmarkDrawer
 from interpolation import TrajectoryProcessor
+import tempfile
 
 
 class VideoProcessor:
@@ -27,22 +28,39 @@ class VideoProcessor:
         start_frame: Optional[int] = None,
         end_frame: Optional[int] = None,
     ):
+        temp = None
         if isinstance(video_path, str) and "youtube" in video_path:
-            import pafy
+            from pytubefix import YouTube
+            import io
 
             if start_frame is None:
-                raise ValueError("Start frame is None. Needs to be a valid frame")
+                raise ValueError(
+                    "Start frame is None. Needs to be a valid frame")
 
+            video_buffer: io.BytesIO = io.BytesIO()
             try:
-                video = pafy.new(video_path, ydl_opts={"nocheckcertificate": True})
-                best = video.getbest()
-                video_path = best.url  # pyright: ignore
+                video = YouTube(video_path).streams.first()
+                if video:
+                    print(video_buffer.getbuffer().nbytes)
+                    video.stream_to_buffer(video_buffer)
+                    print(video_buffer.getbuffer().nbytes)
+                else:
+                    raise ValueError("Could not get video")
             except Exception as e:
+                print(e.with_traceback(None))
                 print(f"Error processing video: {e}")
                 return
-            cap = cv2.VideoCapture(video_path)
+
+            if video_buffer.getbuffer().nbytes == 0:
+                raise ValueError("Could not get video")
+
+            temp = tempfile.NamedTemporaryFile("wb")
+            temp.write(video_buffer.getbuffer())
+            filename = temp.name
+            cap = cv2.VideoCapture(f"{filename}")
             cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             if not cap.isOpened():
+                print(cap.getExceptionMode())
                 raise ValueError(f"Could not open video stream: {video_path}")
         else:
             cap = cv2.VideoCapture(video_path)
@@ -82,11 +100,15 @@ class VideoProcessor:
         Path(self.config.output_dir).mkdir(exist_ok=True)
         if self.config.save_json and json_processor is not None:
             # Interpolate data and save it as JSON
-            interpolator = TrajectoryProcessor(word, json_processor.data, self.config)
+            interpolator = TrajectoryProcessor(
+                word, json_processor.data, self.config)
             interpolator.write_json()
 
         if self.config.save_tfrecord and tfrecord_processor is not None:
-            tfrecord_processor.save(f"{self.config.output_dir}/{word}.tfrecord")
+            tfrecord_processor.save(
+                f"{self.config.output_dir}/{word}.tfrecord")
+        if temp is not None:
+            temp.close()
 
     def _process_frames(self, cap, processors, end_frame=None):
         frame_count = 0
@@ -102,14 +124,17 @@ class VideoProcessor:
 
             # Process frame
             mp_image = self._prepare_frame(frame)
-            timestamp_ms = int(cv2.getTickCount() / cv2.getTickFrequency() * 1000)
+            timestamp_ms = int(cv2.getTickCount() /
+                               cv2.getTickFrequency() * 1000)
 
             # Detect landmarks
-            hand_result = self.hand_landmarker.detect_for_video(mp_image, timestamp_ms)  # pyright: ignore
+            hand_result = self.hand_landmarker.detect_for_video(
+                mp_image, timestamp_ms)  # pyright: ignore
             gesture_result = self.gesture_recognizer.recognize_for_video(  # pyright: ignore
                 mp_image, timestamp_ms
             )
-            pose_result = self.pose_landmarker.detect_for_video(mp_image, timestamp_ms)  # pyright: ignore
+            pose_result = self.pose_landmarker.detect_for_video(
+                mp_image, timestamp_ms)  # pyright: ignore
 
             # Update processors
             for processor in processors:
@@ -144,7 +169,8 @@ class VideoProcessor:
     def _display_frame(
         self, mp_image, face_result, hand_result, gesture_result, pose_result, prev_time
     ):
-        annotated_image = cv2.cvtColor(mp_image.numpy_view(), cv2.COLOR_RGB2BGR)
+        annotated_image = cv2.cvtColor(
+            mp_image.numpy_view(), cv2.COLOR_RGB2BGR)
         annotated_image = LandmarkDrawer.draw_landmarks(
             annotated_image,
             # face_result,

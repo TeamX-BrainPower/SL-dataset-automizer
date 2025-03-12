@@ -64,7 +64,8 @@ class MLModel:
 
     def train_model(
         self,
-        data: list[dict],
+        train_data: list[dict],
+        test_data: Optional[list[dict]] = None,
         test_size: float = 0.25,
         batchsize: int = 32,
         epochs: int = 50,
@@ -73,7 +74,7 @@ class MLModel:
         x = []
         y = []
 
-        for word in data:
+        for word in train_data:
             sample_label = word["word"]
             for sample in word["samples"]:
                 sample_data = np.empty((30, 44, 3))
@@ -131,9 +132,67 @@ class MLModel:
             x, y_encoded, test_size=test_size, stratify=y_encoded
         )
 
-        X_train, X_val, Y_train, Y_val = train_test_split(
-            X_train, Y_train, test_size=test_size, stratify=y_encoded
-        )
+        if test_data:
+            x_test = []
+            y_test = []
+
+            for word in test_data:
+                sample_label = word["word"]
+                for sample in word["samples"]:
+                    sample_data = np.empty((30, 44, 3))
+                    sample_data[:] = np.nan
+
+                    for idx, value in enumerate(sample[:30]):
+                        pose = value.get("pose", None)
+                        hands = value.get("hands", None)
+
+                        if pose:
+                            landmarks = pose[0]["landmarks"]
+                            right_shoulder = landmarks[12]
+                            left_shoulder = landmarks[11]
+                            right_elbow = landmarks[14]
+                            left_elbow = landmarks[13]
+                            sample_data[idx, 0:4] = np.array(
+                                [
+                                    [
+                                        right_shoulder["x"],
+                                        right_shoulder["y"],
+                                        right_shoulder["z"],
+                                    ],
+                                    [
+                                        left_shoulder["x"],
+                                        left_shoulder["y"],
+                                        left_shoulder["z"],
+                                    ],
+                                    [right_elbow["x"], right_elbow["y"], right_elbow["z"]],
+                                    [left_elbow["x"], left_elbow["y"], left_elbow["z"]],
+                                ]
+                            )
+
+                        if hands:
+                            for hand in hands:
+                                landmarks = hand["landmarks"][1:]
+                                points = np.array(
+                                    [[p["x"], p["y"], p["z"]] for p in landmarks]
+                                )
+                                if hand["handedness"] == "Right":
+                                    sample_data[idx, 4:24] = points
+                                else:
+                                    sample_data[idx, 24:] = points
+                        pass
+
+                    x_test.append(sample_data)
+                    y_test.append(sample_label)
+
+            y_test_encoded = self.labels.fit(y_test)
+
+            X_train, X_val, Y_train, Y_val = train_test_split(
+                x_test, y_test_encoded, test_size=test_size, stratify=y_encoded
+            )
+        else:
+            X_train, X_val, Y_train, Y_val = train_test_split(
+                X_train, Y_train, test_size=test_size, stratify=y_encoded
+            )
 
         self.Y_test = np.array(Y_test)
         self.X_test = np.array(X_test)
