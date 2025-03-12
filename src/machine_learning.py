@@ -1,14 +1,26 @@
+from typing import Optional
 import keras
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
+from sklearn.metrics import confusion_matrix, classification_report
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 class MLModel:
     model: keras.models.Sequential
+    labels: LabelEncoder
+    Y_test: np.ndarray
+    X_test: np.ndarray
+    __model_trained: bool
 
     def __init__(self, num_classes: int) -> None:
+        self.labels = LabelEncoder()
+        self.__model_trained = False
+        self.Y_test = np.array([])
+        self.X_test = np.array([])
         self.model = keras.models.Sequential(
             [
                 keras.layers.Input((30, 44, 1, 3)),
@@ -46,8 +58,7 @@ class MLModel:
         self.model.summary()
         optimizer = keras.optimizers.Adam(learning_rate=0.001)
         loss = keras.losses.SparseCategoricalCrossentropy(from_logits=False)
-        self.model.compile(optimizer=optimizer, loss=loss,
-                           metrics=["accuracy"])
+        self.model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
         return
 
     def train_model(
@@ -57,12 +68,7 @@ class MLModel:
         batchsize: int = 32,
         epochs: int = 50,
     ) -> None:
-        # do something with the data
-
-        # labels = [d["word"] for d in data]
-
-        # list with index 0 being X and 1 being Y
-        all_data = []
+        # structure the data correctly
         x = []
         y = []
 
@@ -94,8 +100,7 @@ class MLModel:
                                     left_shoulder["y"],
                                     left_shoulder["z"],
                                 ],
-                                [right_elbow["x"], right_elbow["y"],
-                                    right_elbow["z"]],
+                                [right_elbow["x"], right_elbow["y"], right_elbow["z"]],
                                 [left_elbow["x"], left_elbow["y"], left_elbow["z"]],
                             ]
                         )
@@ -119,25 +124,29 @@ class MLModel:
         x = x.reshape((x.shape[0], 30, 44, 1, 3))
         y = np.array(y)
 
-        label_encoder = LabelEncoder()
-        y_encoded = np.array(label_encoder.fit_transform(y))
+        y_encoded = np.array(self.labels.fit_transform(y))
 
-        print("data shape:", x.shape, y_encoded.shape)
+        X_train, X_test, Y_train, Y_test = train_test_split(
+            x, y_encoded, test_size=test_size, stratify=y_encoded
+        )
 
-        # X_train, X_test, Y_train, Y_test = train_test_split(
-        #     x, y_one_hot, test_size=test_size, stratify=y_encoded
-        # )
-        #
-        # X_train, X_val, Y_train, Y_val = train_test_split(
-        #     X_train, Y_train, test_size=test_size, stratify=y_encoded
-        # )
-        #
+        X_train, X_val, Y_train, Y_val = train_test_split(
+            X_train, Y_train, test_size=test_size, stratify=y_encoded
+        )
+
+        self.Y_test = np.array(Y_test)
+        self.X_test = np.array(X_test)
+
+        # train model
         self.model.fit(
-            x,
-            y_encoded,
+            X_train,
+            Y_train,
+            validation_data=(X_val, Y_val),
             epochs=epochs,
             batch_size=batchsize,
         )
+
+        self.__model_trained = True
 
         return
 
@@ -150,6 +159,21 @@ class MLModel:
         open(f"{path}/model.tflite", "wb").write(tf_model)  # pyright: ignore
 
         return
+
+    def get_model_stats(self, image_path: Optional[str] = None):
+        if not self.__model_trained:
+            raise ValueError("Model is not trained yet!")
+
+        Y_pred = self.model.predict(self.X_test)
+        y_pred = np.argmax(Y_pred)
+
+        print(classification_report(self.Y_test, y_pred))
+        fig, ax = plt.subplots(figsize=(13, 12))
+        sns.heatmap(confusion_matrix(self.Y_test, y_pred), ax=ax)
+        if not image_path:
+            fig.show()
+        else:
+            fig.savefig(image_path)
 
 
 if __name__ == "__main__":
