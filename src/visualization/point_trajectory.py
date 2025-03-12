@@ -35,7 +35,7 @@ def main():
 
 # Load and return file_name.json
 def load_json(file_name):
-    with open(f'parsed-output/{file_name}.json') as f:
+    with open(f'data/1-raw/{file_name}.json') as f:
         data = json.load(f)
     return data
 
@@ -45,6 +45,8 @@ def process_landmarks(data):
     landmark_trajectories = {}
     
     for frame in data["frameData"]:
+        if "hands" not in frame:
+            continue
         for hand in frame["hands"]:
             hand_marks = hand["landmarks"]
             for i, landmark in enumerate(hand_marks):
@@ -161,7 +163,6 @@ def display_dynamic(landmark_trajectories, interval=50):
     ani = animation.FuncAnimation(fig, update, frames=max_frames, interval=interval, blit=True)
 
     plt.show()
-    
 
 if __name__ == "__main__":
     main()

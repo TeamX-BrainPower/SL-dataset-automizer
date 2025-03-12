@@ -14,8 +14,11 @@ class VideoProcessor:
         self.config = config
         self.face_landmarker = None
         self.hand_landmarker = None
+        self.gesture_recognizer = None
+        self.pose_landmarker = None
 
-    def process_video(self, video_path: str, word: str):
+    def process_video(self, video_path = 0 , word: str= None):
+
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise ValueError("Could not open video stream")
@@ -37,7 +40,9 @@ class VideoProcessor:
         # Process frames
         with LandmarkerFactory.create_landmarkers(self.config) as (
                 self.face_landmarker,
-                self.hand_landmarker
+                self.hand_landmarker,
+                self.gesture_recognizer,
+                self.pose_landmarker
         ):
             self._process_frames(cap, processors)
 
@@ -66,16 +71,22 @@ class VideoProcessor:
             timestamp_ms = int(cv2.getTickCount() / cv2.getTickFrequency() * 1000)
 
             # Detect landmarks
-            face_result = self.face_landmarker.detect_for_video(mp_image, timestamp_ms)
+            # face_result = self.face_landmarker.detect_for_video(mp_image, timestamp_ms)
             hand_result = self.hand_landmarker.detect_for_video(mp_image, timestamp_ms)
+            gesture_result = self.gesture_recognizer.recognize_for_video(mp_image, timestamp_ms)
+            pose_result = self.pose_landmarker.detect_for_video(mp_image, timestamp_ms)
 
             # Update processors
             for processor in processors:
-                processor.process_frame(hand_result, frame_count)
+                # processor.process_hands(hand_result, frame_count)
+                # # processor.process_face(face_result, frame_count)
+                # processor.process_gesture(gesture_result, frame_count)
+                # processor.process_pose(pose_result, frame_count)
+                processor.process_frame(frame_count, hand_result, None, gesture_result, pose_result)
 
             # Display output if configured
             if self.config.display_output:
-                self._display_frame(mp_image, face_result, hand_result, prev_time)
+                self._display_frame(mp_image, None, hand_result, gesture_result, pose_result, prev_time)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
 
@@ -87,16 +98,19 @@ class VideoProcessor:
             cv2.destroyAllWindows()
 
     def _prepare_frame(self, frame):
-        flipped_frame = cv2.flip(frame, 1)
-        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+        # flipped_frame = cv2.flip(frame, 1)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
-    def _display_frame(self, mp_image, face_result, hand_result, prev_time):
+    def _display_frame(self, mp_image, face_result, hand_result, gesture_result, pose_result,  prev_time):
         annotated_image = cv2.cvtColor(mp_image.numpy_view(), cv2.COLOR_RGB2BGR)
         annotated_image = LandmarkDrawer.draw_landmarks(
             annotated_image,
-            face_result,
-            hand_result
+            # face_result,
+            None,
+            hand_result, 
+            gesture_result, 
+            pose_result
         )
 
         # Add FPS counter

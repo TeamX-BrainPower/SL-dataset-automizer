@@ -2,7 +2,10 @@ import mediapipe as mp
 from mediapipe.tasks.python import vision
 import cv2
 from contextlib import contextmanager
-from config import ProcessingConfig
+
+"""
+The LandmarkerFactory class is responsible for creating the face, hand, gesture, and pose landmarkers. 
+"""
 
 
 class LandmarkerFactory:
@@ -24,11 +27,25 @@ class LandmarkerFactory:
             num_hands=config.num_hands
         )
 
+        gesture_options = vision.GestureRecognizerOptions(
+            base_options=base_options(model_asset_path=config.gesture_model_path), 
+            running_mode=vision_mode.VIDEO
+        )
+
+        pose_options = vision.PoseLandmarkerOptions(
+            base_options=base_options(model_asset_path=config.pose_model_path),
+            running_mode=vision_mode.VIDEO
+        )
+
         face_landmarker = vision.FaceLandmarker.create_from_options(face_options)
         hand_landmarker = vision.HandLandmarker.create_from_options(hand_options)
+        gesture_recognizer = vision.GestureRecognizer.create_from_options(gesture_options)
+        pose_landmarker = vision.PoseLandmarker.create_from_options(pose_options) 
 
         try:
-            yield face_landmarker, hand_landmarker
+            yield face_landmarker, hand_landmarker, gesture_recognizer, pose_landmarker
         finally:
             face_landmarker.close()
             hand_landmarker.close()
+            gesture_recognizer.close()
+            pose_landmarker.close()
