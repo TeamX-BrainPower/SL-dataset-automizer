@@ -44,7 +44,7 @@ def main():
     # print("Training model...")
     # train_model()
     # Process webcam stream
-    webprocessor.process_video(0, "livefeed")
+    webprocessor.process_video(0, "skilsmisse")
 
     # Process a video file
     word = "skilsmisse"

@@ -44,7 +44,7 @@ base_line = [5, 9, 13, 17]
 def main():
     data = load_json('skilsmisse')
     landmark_trajectories = process_landmarks(data)
-    display_dynamic(landmark_trajectories, data)
+    display_dynamic(landmark_trajectories)
     
 
 # Load and return file_name.json
@@ -77,8 +77,8 @@ def process_landmarks(data):
     return landmark_trajectories
 
 
-# Displays dynamic 3d trajectory from data json via load_json()
-def display_dynamic(landmark_trajectories, data, interval=50):
+# Displays dynamic 3d trajectory
+def display_dynamic(landmark_trajectories):
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
 
@@ -189,7 +189,7 @@ def display_dynamic(landmark_trajectories, data, interval=50):
     ax.view_init(elev=90, azim=90)  # Set elevation and azimuthal angles here
     ax.dist = 8  # Set distance from the viewer to the plot
 
-    max_frames = data["total_frame_count"]
+    max_frames = len(landmark_trajectories["Left"][0]['x'])
     
     def update(frame):
         """Update function for the animation"""
@@ -290,7 +290,7 @@ def display_dynamic(landmark_trajectories, data, interval=50):
 
         return list(lines_left.values()) + list(lines_right.values()) + list(finger_lines_left.values()) + list(finger_lines_right.values()) + list(wrist_lines_left.values()) + list(wrist_lines_right.values()) + list(start_points_left.values()) + list(start_points_right.values()) + [base_line_plot_left] + [base_line_plot_right]
 
-    ani = animation.FuncAnimation(fig, update, frames=max_frames, interval=interval, blit=True)
+    ani = animation.FuncAnimation(fig, update, frames=max_frames, interval=50, blit=True)
 
     plt.show()
 
