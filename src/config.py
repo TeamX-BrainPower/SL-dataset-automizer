@@ -11,3 +11,10 @@ class ProcessingConfig:
     display_output: bool = True
     save_json: bool = True
     save_tfrecord: bool = False
+
+@dataclass
+class MotionDetectionConfig:
+    threshold_delta = 0.000995 # Difference threshold between frames to detect motion
+    detection_window_size = 5 # Number of frames to consider for motion detection
+    missing_threshold = 10 # Number of frames before considering hand truly missing
+    min_stable_frames = 10  # Minimum number of frames needed before checking for pauses
