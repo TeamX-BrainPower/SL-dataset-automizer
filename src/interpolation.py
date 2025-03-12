@@ -1,21 +1,18 @@
 from scipy.interpolate import interp1d
 import numpy as np
 import json
+import os
+from config import ProcessingConfig
 from visualization.hand_trajectory import display_dynamic, process_landmarks
 
 
-class DataReader:
-    def __init__(self, file_name):
+class DataNPConverter:
+    def __init__(self, file_name, json_data):
         self.file_name = file_name
-        self.json_data = self.load_json()
+        self.json_data = json_data
         self.orig_numpy_data = self.json_to_numpy()
         self.data = self.zero_shift_array()
         # data[pose/left/right][frame][landmark][x/y/z]
-        
-    def load_json(self):
-        with open(f'data/raw/{self.file_name}.json') as f:
-            data = json.load(f)
-        return data
     
     def json_to_numpy(self):
         frames = self.json_data.get("frameData")
@@ -95,24 +92,32 @@ class Interpolator:
 
 
 class DataWriter:
-    def __init__(self, file_name, numpy_data):
+    def __init__(self, file_name, numpy_data, config: ProcessingConfig):
+        self.config = config
         self.file_name = file_name
         self.numpy_data = numpy_data
         self.json_data = self.numpy_to_json()
         
     def write_json(self):
-        json_data = json.dumps(self.json_data, indent=4)
-        with open(f'data/raw/{self.file_name}_interp.json', 'w') as f:
-            f.write(json_data)
+        if os.path.exists(f'{self.config.output_dir}/{self.file_name}_dataset.json'):
+            with open(f'{self.config.output_dir}/{self.file_name}_dataset.json', 'r') as f:
+                data = json.load(f)
+        else:
+            data = {"word": self.file_name, "frameData": []}
+            
+        data["frameData"].append(self.json_data)
+        
+        with open(f'{self.config.output_dir}/{self.file_name}_dataset.json', 'w') as f:
+            json.dump(data, f, indent=4)
             
     def numpy_to_json(self):
         [pose_data, left_hand_data, right_hand_data] = self.numpy_data
-        json_data = {"word": self.file_name,
-                     "total_frame_count": len(pose_data),
-                     "video_frame_rate": len(pose_data),
-                     "frameData": []
-                     }
-        
+        # json_data = {"word": self.file_name,
+        #             #  "total_frame_count": len(pose_data),
+        #             #  "video_frame_rate": len(pose_data),
+        #              "frameData": []
+        #              }
+        frames = []
         for i in range(len(pose_data)):
             frame = {"frame": i, 
                      "pose": [],
@@ -128,25 +133,23 @@ class DataWriter:
             right_landmarks = [{"x": float(x), "y": float(y), "z": float(z)} for x, y, z in right_hand_data[i]]
             frame["hands"].append({"handedness": "Right", "landmarks": right_landmarks})
             
-            json_data["frameData"].append(frame)
+            frames.append(frame)
         
-        return json_data
+        return frames
 
 
-class HandTrajectoryProcessor:
-    def __init__(self, file_name):
+class TrajectoryProcessor:
+    def __init__(self, file_name, json_data):
         self.file_name = file_name
-        self.data_reader = DataReader(file_name)
-        self.interpolator = Interpolator(self.data_reader.data)
-        self.writer = DataWriter(file_name, self.interpolator.interp_data)
-
-    def process(self):
-        interpolated_data = self.interpolator.interpolate()
-        # display_dynamic(interpolated_data)
+        self.data_converter = DataNPConverter(file_name, json_data)
+        self.interpolator = Interpolator(self.data_converter.data)
+        self.data = self.interpolator.interp_data
+        self.writer = DataWriter(file_name, self.data)
+        
+    def write_json(self):
         self.writer.write_json()
         
 
-
 if __name__ == "__main__":
-    processor = HandTrajectoryProcessor('skilsmisse')
-    processor.process()
+    processor = TrajectoryProcessor('skilsmisse')
+    processor.write_json()
