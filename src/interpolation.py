@@ -139,12 +139,12 @@ class DataWriter:
 
 
 class TrajectoryProcessor:
-    def __init__(self, file_name, json_data):
+    def __init__(self, file_name, json_data, config: ProcessingConfig):
         self.file_name = file_name
         self.data_converter = DataNPConverter(file_name, json_data)
         self.interpolator = Interpolator(self.data_converter.data)
         self.data = self.interpolator.interp_data
-        self.writer = DataWriter(file_name, self.data)
+        self.writer = DataWriter(file_name, self.data, config)
         
     def write_json(self):
         self.writer.write_json()
