@@ -22,7 +22,7 @@ class MLModel:
         self.Y_test = np.array([])
         self.X_test = np.array([])
         self.model = keras.models.Sequential(
-            [
+            layers=[
                 keras.layers.Input((30, 44, 1, 3)),
                 keras.layers.ConvLSTM2D(
                     filters=32,
@@ -52,7 +52,8 @@ class MLModel:
                 keras.layers.Dense(128, activation="relu"),
                 keras.layers.Dropout(0.3),
                 keras.layers.Dense(num_classes, activation="softmax"),
-            ]
+            ],
+            name="NTS Model"
         )
 
         self.model.summary()
