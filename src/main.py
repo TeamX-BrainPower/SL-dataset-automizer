@@ -71,7 +71,7 @@ def main():
         return
 
     config = ProcessingConfig(
-        display_output=False,
+        display_output=True,
         save_json=True,
         save_tfrecord=True,
         vision_mode=RunningMode.IMAGE,
@@ -112,12 +112,18 @@ def main():
 
     # predict the signs meaning
 
-    # processor = LiveProsessor(config)
-    videos = ["test.mp4"]
-
-    processor = VideoProcessor(config, videos)
-
+    processor = LiveProsessor(config)
     processor.process()
+    # videos = ["test.mp4"]
+    #
+    # processor = VideoProcessor(config, videos)
+    #
+    # processor.process()
+    #
+    # # Process a video file
+    # word = "skilsmisse"
+    # video_url = f"https://www.minetegn.no/Tegnordbok-HTML/video_/{word}.mp4"
+    # processor.process_video(video_url, word)
 
 
 if __name__ == "__main__":

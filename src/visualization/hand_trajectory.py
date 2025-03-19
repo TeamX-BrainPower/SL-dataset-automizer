@@ -42,6 +42,7 @@ base_line = [5, 9, 13, 17]
 
 # Main func
 def main():
+<<<<<<< HEAD
     data = load_json("adjektiv")
     landmark_trajectories = process_landmarks(data)
     display_dynamic(landmark_trajectories, data)
@@ -50,6 +51,16 @@ def main():
 # Load and return file_name.json
 def load_json(file_name):
     with open(f"parsed-output/{file_name}.json") as f:
+=======
+    data = load_json('skilsmisse')
+    landmark_trajectories = process_landmarks(data)
+    display_dynamic(landmark_trajectories)
+    
+
+# Load and return file_name.json
+def load_json(file_name):
+    with open(f'data/1-raw/{file_name}.json') as f:
+>>>>>>> main
         data = json.load(f)
     return data
 
@@ -59,6 +70,8 @@ def process_landmarks(data):
     landmark_trajectories = {"Left": {}, "Right": {}}
     length = data["total_frame_count"]
     for frame in data["frameData"]:
+        if "hands" not in frame:
+            continue
         for hand in frame["hands"]:
             hand_marks = hand["landmarks"]
             hand_key = hand["handedness"]
@@ -76,8 +89,8 @@ def process_landmarks(data):
     return landmark_trajectories
 
 
-# Displays dynamic 3d trajectory from data json via load_json()
-def display_dynamic(landmark_trajectories, data, interval=50):
+# Displays dynamic 3d trajectory
+def display_dynamic(landmark_trajectories):
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
 
@@ -238,8 +251,13 @@ def display_dynamic(landmark_trajectories, data, interval=50):
     ax.view_init(elev=90, azim=90)  # Set elevation and azimuthal angles here
     ax.dist = 8  # Set distance from the viewer to the plot
 
+<<<<<<< HEAD
     max_frames = data["total_frame_count"]
 
+=======
+    max_frames = len(landmark_trajectories["Left"][0]['x'])
+    
+>>>>>>> main
     def update(frame):
         """Update function for the animation"""
 
@@ -384,6 +402,7 @@ def display_dynamic(landmark_trajectories, data, interval=50):
             + [base_line_plot_right]
         )
 
+<<<<<<< HEAD
     ani = animation.FuncAnimation(
         fig, update, frames=max_frames, interval=interval, blit=True
     )
@@ -391,6 +410,12 @@ def display_dynamic(landmark_trajectories, data, interval=50):
     plt.show()
 
 
+=======
+    ani = animation.FuncAnimation(fig, update, frames=max_frames, interval=50, blit=True)
+
+    plt.show()
+
+>>>>>>> main
 if __name__ == "__main__":
     main()
 

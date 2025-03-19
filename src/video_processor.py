@@ -2,7 +2,7 @@ from config import ProcessingConfig
 from models.landmarker import LandmarkerFactory
 from processor import Processor
 import cv2 as cv
-from time import time, sleep
+from time import time
 import numpy as np
 
 
