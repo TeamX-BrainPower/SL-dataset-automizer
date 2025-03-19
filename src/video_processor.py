@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 import cv2
 import time
 import mediapipe as mp
@@ -10,7 +10,6 @@ from config import ProcessingConfig
 from models.landmarker import LandmarkerFactory
 from visualization.drawer import LandmarkDrawer
 from interpolation import TrajectoryProcessor
-import tempfile
 
 
 class VideoProcessor:
@@ -27,45 +26,25 @@ class VideoProcessor:
         word: str,
         start_frame: Optional[int] = None,
         end_frame: Optional[int] = None,
+        data_type: Optional[Literal["train", "test", "val"]] = None
     ):
-        temp = None
-        if isinstance(video_path, str) and "youtube" in video_path:
-            from pytubefix import YouTube
-            import io
-
-            if start_frame is None:
-                raise ValueError(
-                    "Start frame is None. Needs to be a valid frame")
-
-            video_buffer: io.BytesIO = io.BytesIO()
+        if "youtube" in video_path:
+            import pafy
             try:
-                video = YouTube(video_path).streams.first()
-                if video:
-                    print(video_buffer.getbuffer().nbytes)
-                    video.stream_to_buffer(video_buffer)
-                    print(video_buffer.getbuffer().nbytes)
-                else:
-                    raise ValueError("Could not get video")
+                video = pafy.new(video_path,ydl_opts={'nocheckcertificate': True})
+                best = video.getbest()
+                video_path = best.url
             except Exception as e:
-                print(e.with_traceback(None))
                 print(f"Error processing video: {e}")
                 return
-
-            if video_buffer.getbuffer().nbytes == 0:
-                raise ValueError("Could not get video")
-
-            temp = tempfile.NamedTemporaryFile("wb")
-            temp.write(video_buffer.getbuffer())
-            filename = temp.name
-            cap = cv2.VideoCapture(f"{filename}")
+            cap = cv2.VideoCapture(video_path)
             cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             if not cap.isOpened():
-                print(cap.getExceptionMode())
-                raise ValueError(f"Could not open video stream: {video_path}")
+                raise ValueError("Could not open video stream: " + video_path)
         else:
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                raise ValueError(f"Could not open video stream: {video_path}")
+                raise ValueError("Could not open video stream: " + video_path)
 
         # Initialize processors
         processors = []
@@ -102,13 +81,16 @@ class VideoProcessor:
             # Interpolate data and save it as JSON
             interpolator = TrajectoryProcessor(
                 word, json_processor.data, self.config)
-            interpolator.write_json()
+            if data_type:
+                interpolator.write_json(data_type)
+            else:
+                interpolator.write_json()
 
         if self.config.save_tfrecord and tfrecord_processor is not None:
             tfrecord_processor.save(
                 f"{self.config.output_dir}/{word}.tfrecord")
-        if temp is not None:
-            temp.close()
+        # if temp is not None:
+        #     temp.close()
 
     def _process_frames(self, cap, processors, end_frame=None):
         frame_count = 0
@@ -138,10 +120,6 @@ class VideoProcessor:
 
             # Update processors
             for processor in processors:
-                # processor.process_hands(hand_result, frame_count)
-                # # processor.process_face(face_result, frame_count)
-                # processor.process_gesture(gesture_result, frame_count)
-                # processor.process_pose(pose_result, frame_count)
                 processor.process_frame(
                     frame_count, hand_result, None, gesture_result, pose_result
                 )

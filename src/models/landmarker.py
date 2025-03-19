@@ -1,6 +1,5 @@
 import mediapipe as mp
 from mediapipe.tasks.python import vision
-import cv2
 from contextlib import contextmanager
 
 """

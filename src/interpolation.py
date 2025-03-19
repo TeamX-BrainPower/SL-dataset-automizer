@@ -1,3 +1,4 @@
+from typing import Literal
 from scipy.interpolate import interp1d
 import numpy as np
 import json
@@ -108,18 +109,17 @@ class DataWriter:
         self.numpy_data = numpy_data
         self.json_data = self.numpy_to_json()
 
-    def write_json(self):
-        if os.path.exists(f"{self.config.output_dir}/{self.file_name}_dataset.json"):
-            with open(
-                f"{self.config.output_dir}/{self.file_name}_dataset.json", "r"
-            ) as f:
+    def write_json(self, data_type: Literal["train", "test", "val"] = "train"):
+        file_name = f"{self.config.output_dir}/{data_type}/{self.file_name}_{data_type}_dataset.json"
+        if os.path.exists(file_name):
+            with open(file_name, "r") as f:
                 data = json.load(f)
         else:
             data = {"word": self.file_name, "frameData": []}
 
         data["frameData"].append(self.json_data)
 
-        with open(f"{self.config.output_dir}/{self.file_name}_dataset.json", "w") as f:
+        with open(file_name, "w") as f:
             json.dump(data, f, indent=4)
 
     def numpy_to_json(self):
@@ -171,9 +171,9 @@ class TrajectoryProcessor:
         except Exception:
             print("Could not interpolate")
 
-    def write_json(self):
+    def write_json(self, data_type: Literal["train", "test", "val"] = "train"):
         if self.interpolated:
-            self.writer.write_json()
+            self.writer.write_json(data_type)
 
 
 if __name__ == "__main__":
