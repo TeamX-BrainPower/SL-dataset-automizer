@@ -108,14 +108,14 @@ class MLModel:
     y_test: np.ndarray
     __model_trained: bool
     early_stop: keras.callbacks.EarlyStopping
-    labels: Optional[list[str]]
+    output_labels: Optional[list[str]]
 
     def __init__(self, num_classes: Optional[int] = None, labels: Optional[list[str]] = None) -> None:
         self.labels = LabelEncoder()
         self.__model_trained = False
         self.x_test = np.array([])
         self.y_test = np.array([])
-        self.labels = labels
+        self.output_labels = labels
         if not num_classes:
             self.model = None
             print("Model is not initialized as num_classes is None.")
@@ -124,14 +124,7 @@ class MLModel:
         
         self.model: tf.keras.models.Sequential = keras.models.Sequential(
             layers=[
-                # keras.layers.Input((30, 44, 1, 3)),
                 tf.keras.layers.Input((30, 44, 1, 3, 1)),
-                # keras.layers.Reshape((30, 44 * 1 * 3)),
-                # keras.layers.LSTM(32, return_sequences=True, activation="relu"),
-                # keras.layers.LSTM(64, return_sequences=True, activation="tanh"),
-                # keras.layers.LSTM(128, return_sequences=True, activation="tanh"),
-                # keras.layers.LSTM(256, return_sequences=True, activation="relu"),
-                # keras.layers.LSTM(128, return_sequences=False, activation="tanh"),
                 tf.keras.layers.ConvLSTM3D(
                     filters=32,
                     kernel_size=(3, 3, 1),
@@ -143,43 +136,24 @@ class MLModel:
                     filters=64,
                     kernel_size=(3, 3, 1),
                     padding="same",
-                    activation="relu",
+                    activation="tanh",
                     return_sequences=True,
                 ),
                 tf.keras.layers.ConvLSTM3D(
                     filters=128,
                     kernel_size=(3, 3, 1),
                     padding="same",
-                    activation="relu",
+                    activation="tanh",
                     return_sequences=True,
                 ),
-                # keras.layers.ConvLSTM2D(
-                #     filters=32,
-                #     kernel_size=(3, 1),
-                #     padding="same",
-                #     activation="relu",
-                #     return_sequences=True,
-                # ),
-                # # keras.layers.BatchNormalization(),
-                # keras.layers.ConvLSTM2D(
-                #     filters=64,
-                #     kernel_size=(3, 1),
-                #     padding="same",
-                #     activation="relu",
-                #     return_sequences=True,
-                # ),
-                # # keras.layers.BatchNormalization(),
-                # keras.layers.ConvLSTM2D(
-                #     filters=128,
-                #     kernel_size=(3, 1),
-                #     padding="same",
-                #     activation="relu",
-                #     return_sequences=True,
-                # ),
-                # keras.layers.BatchNormalization(),
+                tf.keras.layers.BatchNormalization(),
                 tf.keras.layers.Flatten(),
+                tf.keras.layers.Dense(256, activation="relu"),
+                tf.keras.layers.Dropout(0.4),
                 tf.keras.layers.Dense(128, activation="relu"),
                 tf.keras.layers.Dropout(0.3),
+                tf.keras.layers.Dense(128, activation="relu"),
+                tf.keras.layers.Dropout(0.2),
                 tf.keras.layers.Dense(num_classes, activation="softmax"),
             ],
             name="NTS_Model"
@@ -191,6 +165,13 @@ class MLModel:
         loss = keras.losses.SparseCategoricalCrossentropy(from_logits=False)
         self.model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
         return
+
+    @property
+    def is_loaded(self) -> bool:
+        return self.__model_trained
+
+    def summary(self):
+        return self.model.summary()
 
     def train_model(
         self,
@@ -258,14 +239,16 @@ class MLModel:
 
         path_local.mkdir(parents=True, exist_ok=True)
 
-        if self.labels:
+        if self.output_labels:
             label_path = path_local / "labels.txt"
             with label_path.open("w+") as f:
-                for label in self.labels:
+                for label in self.output_labels:
                     f.write(f"{label}\n")
 
-        keras_path = path_local / "keras"
+        keras_path_file = path_local / "model.keras"
+        self.model.save(str(keras_path_file))
 
+        keras_path = path_local / "keras"
         self.model.export(str(keras_path))
 
         # saved_model_pd = keras_path / "saved_model.pb"
@@ -291,14 +274,15 @@ class MLModel:
         if not path_local.exists():
             raise ValueError("Model path does not exist!")
         
-        self.model = tf.saved_model.load(str(path_local / "keras"))
+        # self.model = tf.keras.models.load_model(str(path_local / "keras"))
+        self.model = tf.saved_model.load(str(path_local / "model.keras"))
         self.__model_trained = True
 
         label_path = path_local / "labels.txt"
 
         if label_path.exists():
             with label_path.open("r+") as f:
-                self.labels = [label.strip() for label in f.readlines()]
+                self.output_labels = [label.strip() for label in f.readlines()]
 
         return
     
@@ -313,8 +297,8 @@ class MLModel:
         
         pred = np.argmax(self.model.predict(predict_data), axis=1)
 
-        if self.labels:
-            return self.labels[pred]
+        if self.output_labels:
+            return self.output_labels[pred]
 
         return pred
 
